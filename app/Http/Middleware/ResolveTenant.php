@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Customer;
 use App\Models\TenantUser;
 use App\Support\TenantContext;
 use Closure;
@@ -14,9 +15,9 @@ class ResolveTenant
 
     public function handle(Request $request, Closure $next): Response
     {
-        $user = auth('tenant')->user();
+        $user = auth('tenant')->user() ?? auth('customer')->user();
 
-        if ($user instanceof TenantUser) {
+        if ($user instanceof TenantUser || $user instanceof Customer) {
             $this->tenantContext->set($user->tenant);
         }
 

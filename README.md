@@ -6,7 +6,8 @@ portal with explicit authentication boundaries.
 
 ## Current Status
 
-The repository currently contains the SaaS foundation and travel-product phase:
+The repository currently contains the SaaS foundation and the complete planned
+business schema:
 
 - Shared-schema multi-tenancy with `tenant_id` isolation.
 - Separate `super_admin`, `tenant`, and `customer` authentication guards.
@@ -14,12 +15,36 @@ The repository currently contains the SaaS foundation and travel-product phase:
 - Tenants, tenant users, customers, subscription plans, and subscriptions.
 - Packages, itinerary JSON, include/exclude catalog items, fixed departures,
   overbooking buffers, and group discount tiers.
+- CRM and booking tables: `leads`, `bookings`, `booking_travelers`,
+  `booking_documents`, `booking_addons`, and `booking_include_exclude`.
+- Pricing and operations tables: `promo_codes`, `gift_vouchers`,
+  `booking_waitlist`, `reminders`, `services`, and `service_availability`.
+- Billing tables: `invoices`, `invoice_items`, and `payments`.
+- Public and communication tables: `public_lead_pages`, email template
+  catalogs, campaigns, recipients, unsubscribes, and notifications.
+- Platform tables: `saas_leads` and platform-owned email templates.
 - Row-locked fixed-departure capacity reservations.
 - Permission, activity-log, and media-library package scaffolding.
 
-The remaining architecture phases will add CRM leads, bookings, documents,
-invoices, payments, public tenant pages/API, customer workflows, reminders,
-campaigns, and reporting.
+The database schema is intentionally created ahead of feature delivery. Business
+services, policies, Filament resources, public API endpoints, and workflows are
+implemented phase by phase below.
+
+### Phase 1 execution log
+
+- Foundation schema and separate authentication tables completed.
+- `/admin`, `/tenant`, and `/portal` Filament panels use separate guards and
+  panel-specific login routes.
+- Tenant global scope, request tenant resolution, and cross-tenant isolation
+  regression tests completed.
+- Spatie Permission teams are enabled with `tenant_id` as the team key.
+- Transactional tenant onboarding now creates the tenant owner, assigns the
+  `Tenant Owner` role, and starts the selected subscription plan.
+- Seeded development accounts and clean Docker migration/seeding verification
+  completed.
+
+Phase 1 is complete. The next implementation step is Phase 2 catalog behavior;
+schema-only tables remain intentionally ahead of their application workflows.
 
 ## Tech Stack
 
@@ -71,7 +96,7 @@ the Docker workflow.
 
    This starts:
 
-   - `app`: PHP 8.2 Apache application on `http://localhost:8000`.
+   - `app`: PHP 8.4 Apache application on `http://localhost:8000`.
    - `queue`: Laravel database queue worker.
    - `pgsql`: PostgreSQL 16 database.
 
@@ -99,7 +124,7 @@ Run Laravel commands inside the application container:
 ```powershell
 docker compose exec app php artisan migrate:status
 docker compose exec app php artisan db:seed
-docker compose exec app php artisan test --compact
+docker compose exec app vendor/bin/pest --compact
 docker compose exec app php artisan route:list
 docker compose exec app vendor/bin/pint --dirty
 ```
@@ -156,6 +181,7 @@ The development seed creates these accounts:
 ```text
 Super Admin: admin@example.com / password
 Tenant Staff: staff@example.com / password
+Portal Customer: customer@example.com / password
 ```
 
 Change development credentials before using the application with real data.
@@ -197,10 +223,83 @@ tests/                          Pest feature and unit tests
 - Verify payment webhook signatures before changing payment state.
 - Use eager loading for relationship-heavy Filament tables.
 
+## Database Schema Inventory
+
+The schema follows the table definitions in `Travel saas architecture.md`.
+Tenant-owned tables have a non-null `tenant_id` and are protected by the
+application tenant scope. Platform-owned tables such as `super_admins`,
+`subscription_plans`, `saas_leads`, and `platform_email_templates` do not have a
+`tenant_id`.
+
+### Migration naming convention
+
+Migrations use Laravel's timestamp prefix followed by a precise table or bounded
+domain name:
+
+```text
+YYYY_MM_DD_HHMMSS_create_leads_table.php
+YYYY_MM_DD_HHMMSS_create_bookings_table.php
+YYYY_MM_DD_HHMMSS_add_cancelled_reason_to_bookings_table.php
+```
+
+Use one migration per table for new work. Only tightly coupled tables created
+in the same feature may share a migration, and the filename must name that
+bounded domain. Do not use generic names such as `create_architecture_tables`.
+Never rename an applied migration; create a new migration for later changes.
+
+The initial development reset uses
+`create_travel_business_tables.php` for the already-designed CRM, booking,
+pricing, billing, and communication schema. Future changes must follow the
+precise naming convention above.
+
+The main domain groups are:
+
+| Group | Tables |
+| --- | --- |
+| Identity and tenancy | `tenants`, `super_admins`, `tenant_users`, `customers`, `subscription_plans`, `tenant_subscriptions` |
+| Travel catalog | `packages`, `include_excludes`, `fixed_departures`, `group_discount_tiers`, `services`, `service_availability` |
+| CRM and bookings | `leads`, `bookings`, `booking_travelers`, `booking_documents`, `booking_addons`, `booking_include_exclude`, `booking_waitlist` |
+| Pricing and billing | `promo_codes`, `gift_vouchers`, `invoices`, `invoice_items`, `payments` |
+| Public and reminders | `public_lead_pages`, `reminders` |
+| Email and platform | `email_template_types`, `email_templates`, `platform_email_templates`, `saas_leads`, `email_campaigns`, `email_campaign_recipients`, `email_unsubscribes`, `notifications` |
+
+Money is stored as integer minor units. Booking itinerary and flexible
+configuration data use PostgreSQL JSON columns. Passport numbers are encrypted
+at the model layer, and booking documents are represented by private file
+metadata rather than public paths.
+
+## Delivery Roadmap
+
+The schema is complete, but application behavior is delivered incrementally:
+
+1. **Phase 1 - Foundation:** tenancy, three guards, Filament panels, seeded
+   accounts, tenant-aware Spatie permissions, tenant scope, onboarding, and
+   isolation tests. **Completed.**
+2. **Phase 2 - Catalog:** package CRUD, itinerary editing, include/exclude
+   catalogs, fixed departures, capacity locking, discount tiers, and services.
+3. **Phase 3 - CRM:** customer management, lead pipeline, staff roles, lead
+   assignment, and lead-to-booking conversion.
+4. **Phase 4 - Booking and billing:** bookings, travelers, private documents,
+   add-ons, invoices, invoice numbering, discounts, and payment records.
+5. **Phase 5 - Public website/API:** tenant resolution, published package and
+   departure read APIs, public inquiry forms, waitlist entry, rate limiting,
+   resources, and caching.
+6. **Phase 6 - Customer portal:** invite-only access, booking history,
+   traveler/document workflows, add-on requests, and read-only trip details.
+7. **Phase 7 - Payments:** verified PayPal webhooks, HBL gateway integration,
+   refunds, and payment reconciliation.
+8. **Phase 8 - Operations:** reminder jobs, email templates and campaigns,
+   notifications, audit views, dashboards, reports, and feature-limit
+   enforcement.
+
+Each phase requires focused Pest coverage, cross-tenant read/write regression
+tests for tenant-owned features, `vendor/bin/pint`, and a clean PostgreSQL
+`migrate:fresh --seed` run in Docker before it is considered complete.
+
 ## Coding Standards
 
-- Follow Laravel 12 conventions and existing sibling-file patterns.
-- Use PHP 8.2 type declarations and explicit return types.
+- Follow Laravel 13 conventions and existing sibling-file patterns.
+- Use PHP 8.4 type declarations and explicit return types.
 - Use curly braces for all control structures.
 - Use constructor property promotion where constructors are needed.
 - Use Eloquent relationships and model scopes before raw SQL.
@@ -215,8 +314,8 @@ tests/                          Pest feature and unit tests
 Run the focused test first when changing a feature, then run the complete suite:
 
 ```powershell
-docker compose exec app php artisan test --compact --filter=TenantIsolationTest
-docker compose exec app php artisan test --compact
+docker compose exec app vendor/bin/pest --compact --filter=TenantIsolationTest
+docker compose exec app vendor/bin/pest --compact
 docker compose exec app vendor/bin/pint --dirty
 ```
 

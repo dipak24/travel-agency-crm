@@ -3,16 +3,18 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Auth\Authenticatable as AuthenticatableTrait;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Notifications\Notifiable;
+use Spatie\Permission\Traits\HasRoles;
 
-class Customer extends Model implements Authenticatable
+class Customer extends Model implements Authenticatable, FilamentUser
 {
-    use AuthenticatableTrait, BelongsToTenant, Notifiable;
+    use AuthenticatableTrait, BelongsToTenant, HasRoles, Notifiable;
 
     protected $fillable = [
         'tenant_id', 'name', 'email', 'password', 'phone', 'type', 'address',

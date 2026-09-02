@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Customer;
 use App\Models\SubscriptionPlan;
 use App\Models\SuperAdmin;
 use App\Models\Tenant;
@@ -10,6 +11,7 @@ use App\Models\TenantUser;
 use App\Support\TenantContext;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Spatie\Permission\Models\Role;
 
 class DatabaseSeeder extends Seeder
 {
@@ -30,7 +32,7 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Demo Travel Agency', 'billing_email' => 'billing@example.com'],
         );
 
-        $tenantUser = TenantUser::query()->withoutGlobalScopes()->updateOrCreate(
+        $staff = TenantUser::query()->withoutGlobalScopes()->updateOrCreate(
             ['tenant_id' => $tenant->id, 'email' => 'staff@example.com'],
             ['name' => 'Demo Staff', 'password' => 'password', 'status' => 'active'],
         );
@@ -41,6 +43,18 @@ class DatabaseSeeder extends Seeder
         );
 
         app(TenantContext::class)->set($tenant);
+        $staff->assignRole(Role::findOrCreate('Tenant Owner', 'tenant'));
+
+        Customer::query()->withoutGlobalScopes()->updateOrCreate(
+            ['tenant_id' => $tenant->id, 'email' => 'customer@example.com'],
+            [
+                'name' => 'Demo Customer',
+                'password' => 'password',
+                'phone' => '+1 555 0100',
+                'type' => 'individual',
+            ],
+        );
+
         TenantSubscription::query()->updateOrCreate(
             ['tenant_id' => $tenant->id, 'plan_id' => $plan->id],
             ['status' => 'trialing', 'starts_at' => now()],

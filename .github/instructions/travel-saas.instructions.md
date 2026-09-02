@@ -52,6 +52,9 @@ Implement the roadmap incrementally; do not build every phase in one change.
 - Follow Laravel 13, Filament 5, Livewire 4, and PostgreSQL conventions.
 - Read the relevant architecture section before changing schema or boundaries.
 - Use Laravel generators for new models, migrations, services, and tests.
+- Name migrations precisely (`create_leads_table`, `create_bookings_table`, or
+  `add_status_to_bookings_table`); avoid generic architecture migration names.
+  Prefer one table per migration for new work. Never rename an applied migration.
 - Use explicit PHP types and return types, curly braces, and constructor
   property promotion where appropriate.
 - Prefer Eloquent relationships and scopes over raw SQL.
