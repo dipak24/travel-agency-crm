@@ -2,13 +2,15 @@
     "agents": [
         "codex"
     ],
+    "cloud": false,
     "guidelines": true,
     "herd_mcp": false,
     "mcp": true,
     "sail": false,
     "skills": [
-        "livewire-development",
-        "pest-testing",
+        "infer-conventions",
+        "laravel-best-practices",
+        "testing-best-practices",
         "tailwindcss-development"
     ]
 }

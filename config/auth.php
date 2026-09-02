@@ -1,5 +1,9 @@
 <?php
 
+use App\Models\Customer;
+use App\Models\SuperAdmin;
+use App\Models\TenantUser;
+
 return [
 
     /*
@@ -14,8 +18,8 @@ return [
     */
 
     'defaults' => [
-        'guard' => env('AUTH_GUARD', 'web'),
-        'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
+        'guard' => env('AUTH_GUARD', 'tenant'),
+        'passwords' => env('AUTH_PASSWORD_BROKER', 'tenant_users'),
     ],
 
     /*
@@ -36,9 +40,17 @@ return [
     */
 
     'guards' => [
-        'web' => [
+        'super_admin' => [
             'driver' => 'session',
-            'provider' => 'users',
+            'provider' => 'super_admins',
+        ],
+        'tenant' => [
+            'driver' => 'session',
+            'provider' => 'tenant_users',
+        ],
+        'customer' => [
+            'driver' => 'session',
+            'provider' => 'customers',
         ],
     ],
 
@@ -60,9 +72,17 @@ return [
     */
 
     'providers' => [
-        'users' => [
+        'super_admins' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', App\Models\User::class),
+            'model' => SuperAdmin::class,
+        ],
+        'tenant_users' => [
+            'driver' => 'tenant_scoped',
+            'model' => TenantUser::class,
+        ],
+        'customers' => [
+            'driver' => 'tenant_scoped',
+            'model' => Customer::class,
         ],
 
         // 'users' => [
@@ -91,8 +111,20 @@ return [
     */
 
     'passwords' => [
-        'users' => [
-            'provider' => 'users',
+        'super_admins' => [
+            'provider' => 'super_admins',
+            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'expire' => 60,
+            'throttle' => 60,
+        ],
+        'tenant_users' => [
+            'provider' => 'tenant_users',
+            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'expire' => 60,
+            'throttle' => 60,
+        ],
+        'customers' => [
+            'provider' => 'customers',
             'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
             'expire' => 60,
             'throttle' => 60,

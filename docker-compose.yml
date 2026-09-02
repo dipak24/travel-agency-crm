@@ -1,0 +1,68 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${APP_PORT:-8000}:80"
+    env_file:
+      - .env
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: pgsql
+      DB_PORT: 5432
+    depends_on:
+      pgsql:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "php", "-r", "exit((int) ! @fsockopen('127.0.0.1', 80));" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    volumes:
+      - laravel_storage:/var/www/html/storage
+      - laravel_cache:/var/www/html/bootstrap/cache
+    restart: unless-stopped
+
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: php artisan queue:work --sleep=3 --tries=3 --timeout=90
+    env_file:
+      - .env
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: pgsql
+      DB_PORT: 5432
+    depends_on:
+      app:
+        condition: service_healthy
+      pgsql:
+        condition: service_healthy
+    volumes:
+      - laravel_storage:/var/www/html/storage
+      - laravel_cache:/var/www/html/bootstrap/cache
+    restart: unless-stopped
+
+  pgsql:
+    image: postgres:16-alpine
+    ports:
+      - "${DB_FORWARD_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-travel_agency_crm}
+      POSTGRES_USER: ${DB_USERNAME:-travel_saas}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-travel_saas_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  laravel_storage:
+  laravel_cache:
