@@ -10,6 +10,5 @@ storage/logs
 storage/framework/cache/data
 storage/framework/sessions
 storage/framework/views
-tests
 Dockerfile
 docker-compose.yml
