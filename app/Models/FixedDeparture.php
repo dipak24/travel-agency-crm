@@ -5,10 +5,20 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use LogicException;
 
 class FixedDeparture extends Model
 {
     use BelongsToTenant;
+
+    protected static function booted(): void
+    {
+        static::saving(function (FixedDeparture $departure): void {
+            if (! Package::query()->whereKey($departure->package_id)->exists()) {
+                throw new LogicException('The package must belong to the current tenant.');
+            }
+        });
+    }
 
     protected $fillable = [
         'tenant_id', 'package_id', 'start_date', 'end_date', 'total_slots',

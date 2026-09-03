@@ -43,8 +43,18 @@ implemented phase by phase below.
 - Seeded development accounts and clean Docker migration/seeding verification
   completed.
 
-Phase 1 is complete. The next implementation step is Phase 2 catalog behavior;
-schema-only tables remain intentionally ahead of their application workflows.
+Phase 1 and Phase 2 catalog delivery are complete. The tenant panel now
+supports package, include/exclude, fixed departure, discount tier, service, and
+service availability CRUD with tenant isolation.
+
+### Phase 2 execution log
+
+- Package CRUD is available in the `/tenant` panel, including structured
+  itinerary editing and publication status controls.
+- Include/exclude catalogs, fixed departures, discount tiers, services, and
+  date-based service availability are available in the `/tenant` panel.
+- Fixed departure capacity reservation remains transactional and honors
+  overbooking buffers.
 
 ## Tech Stack
 
@@ -277,6 +287,7 @@ The schema is complete, but application behavior is delivered incrementally:
    isolation tests. **Completed.**
 2. **Phase 2 - Catalog:** package CRUD, itinerary editing, include/exclude
    catalogs, fixed departures, capacity locking, discount tiers, and services.
+   **Completed.**
 3. **Phase 3 - CRM:** customer management, lead pipeline, staff roles, lead
    assignment, and lead-to-booking conversion.
 4. **Phase 4 - Booking and billing:** bookings, travelers, private documents,
