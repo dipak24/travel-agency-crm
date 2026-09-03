@@ -5,16 +5,16 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
-use Illuminate\Auth\Authenticatable as AuthenticatableTrait;
-use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
-class Customer extends Model implements Authenticatable, FilamentUser
+class Customer extends Authenticatable implements FilamentUser
 {
-    use AuthenticatableTrait, BelongsToTenant, HasRoles, Notifiable;
+    use BelongsToTenant, HasFactory, HasRoles, Notifiable;
 
     protected $fillable = [
         'tenant_id', 'name', 'email', 'password', 'phone', 'type', 'address',
@@ -26,6 +26,16 @@ class Customer extends Model implements Authenticatable, FilamentUser
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
+    }
+
+    public function leads(): HasMany
+    {
+        return $this->hasMany(Lead::class);
+    }
+
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(Booking::class);
     }
 
     public function canAccessPanel(Panel $panel): bool

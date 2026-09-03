@@ -7,6 +7,7 @@ use App\Models\TenantUser;
 use App\Services\TenantOnboarding;
 use App\Support\TenantContext;
 use Illuminate\Database\QueryException;
+use Illuminate\Contracts\Auth\Access\Authorizable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -39,6 +40,7 @@ test('onboarding creates an isolated tenant owner and trial subscription', funct
     app(TenantContext::class)->set($tenant);
 
     expect($owner->hasRole('Tenant Owner'))->toBeTrue()
+        ->and($owner)->toBeInstanceOf(Authorizable::class)
         ->and(TenantSubscription::query()->withoutGlobalScopes()->where('tenant_id', $tenant->getKey())->where('plan_id', $plan->getKey())->exists())->toBeTrue()
         ->and(app(TenantContext::class)->id())->toBe($tenant->getKey());
 

@@ -6,18 +6,16 @@ use App\Models\Concerns\BelongsToTenant;
 use Database\Factories\TenantUserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
-use Illuminate\Auth\Authenticatable as AuthenticatableTrait;
-use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
-class TenantUser extends Model implements Authenticatable, FilamentUser
+class TenantUser extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<TenantUserFactory> */
-    use AuthenticatableTrait, BelongsToTenant, HasFactory, HasRoles, Notifiable;
+    use BelongsToTenant, HasFactory, HasRoles, Notifiable;
 
     protected $fillable = [
         'tenant_id', 'name', 'email', 'password', 'status', 'avatar',

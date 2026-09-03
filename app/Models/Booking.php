@@ -1,0 +1,60 @@
+<?php
+
+namespace App\Models;
+
+use App\Models\Concerns\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Booking extends Model
+{
+    use BelongsToTenant, SoftDeletes;
+
+    protected $fillable = [
+        'tenant_id', 'lead_id', 'customer_id', 'package_id', 'fixed_departure_id',
+        'trip_name', 'booked_itinerary', 'description', 'start_date', 'end_date',
+        'pax_count', 'status', 'total_amount', 'created_by_staff_id',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'booked_itinerary' => 'array',
+            'start_date' => 'date',
+            'end_date' => 'date',
+            'pax_count' => 'integer',
+            'total_amount' => 'integer',
+        ];
+    }
+
+    public function tenant(): BelongsTo
+    {
+        return $this->belongsTo(Tenant::class);
+    }
+
+    public function lead(): BelongsTo
+    {
+        return $this->belongsTo(Lead::class);
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    public function package(): BelongsTo
+    {
+        return $this->belongsTo(Package::class);
+    }
+
+    public function fixedDeparture(): BelongsTo
+    {
+        return $this->belongsTo(FixedDeparture::class);
+    }
+
+    public function createdByStaff(): BelongsTo
+    {
+        return $this->belongsTo(TenantUser::class, 'created_by_staff_id');
+    }
+}

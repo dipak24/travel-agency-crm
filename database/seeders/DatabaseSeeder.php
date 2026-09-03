@@ -60,5 +60,7 @@ class DatabaseSeeder extends Seeder
             ['status' => 'trialing', 'starts_at' => now()],
         );
         app(TenantContext::class)->clear();
+
+        $this->call(PermissionSeeder::class);
     }
 }

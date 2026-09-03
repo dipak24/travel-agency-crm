@@ -56,6 +56,26 @@ service availability CRUD with tenant isolation.
 - Fixed departure capacity reservation remains transactional and honors
   overbooking buffers.
 
+### Phase 3 execution log
+
+- Tenant-isolated customer management is available in the `/tenant` panel,
+  including portal account fields and customer types.
+- Tenant-isolated lead management is available with origin tracking, status
+  pipeline fields, follow-up dates, and staff assignment.
+- Lead conversion creates a booking snapshot and marks the lead won
+  transactionally, reserving fixed-departure capacity when selected.
+- CRM regression tests cover cross-tenant isolation, conversion behavior,
+  duplicate conversion, and cross-tenant conversion rejection.
+- Tenant-isolated staff CRUD and tenant-custom staff role management are
+  available in the `/tenant` panel, with role assignments scoped by the active
+  tenant.
+- Authorization policies now protect customer, lead, staff, and staff-role
+  operations, including same-tenant checks and owner-only administration.
+- Converted leads now have a tenant booking list and status workflow at
+  `/tenant/bookings`; staff can launch conversion directly from a lead editor.
+- Phase 3 is complete. Phase 4 will extend bookings with travelers, documents,
+  add-ons, invoicing, and payment records.
+
 ## Tech Stack
 
 - PHP 8.4
@@ -139,6 +159,10 @@ docker compose exec app php artisan route:list
 docker compose exec app vendor/bin/pint --dirty
 ```
 
+`DatabaseSeeder` also invokes `PermissionSeeder`, which creates the
+`super_admin`, tenant, and customer guard permissions and assigns tenant
+owner, sales, operations, and portal roles for the seeded demo accounts.
+
 View logs or stop the stack:
 
 ```powershell
@@ -195,6 +219,12 @@ Portal Customer: customer@example.com / password
 ```
 
 Change development credentials before using the application with real data.
+
+If `/tenant/login` reports valid seeded credentials as invalid, reseed the
+development database with `docker compose exec app php artisan db:seed --force`.
+Tenant authentication models extend Laravel's foundation authenticatable user
+class so Filament and Spatie Permission authorization can render the tenant
+dashboard after login.
 
 ## Project Structure
 

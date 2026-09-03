@@ -4,15 +4,13 @@ namespace App\Models;
 
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
-use Illuminate\Auth\Authenticatable as AuthenticatableTrait;
-use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
-class SuperAdmin extends Model implements Authenticatable, FilamentUser
+class SuperAdmin extends Authenticatable implements FilamentUser
 {
-    use AuthenticatableTrait, HasRoles, Notifiable;
+    use HasRoles, Notifiable;
 
     protected $fillable = ['name', 'email', 'password', 'status', 'avatar'];
 
