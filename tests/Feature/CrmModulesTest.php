@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Customer;
+use App\Models\Booking;
+use App\Models\BookingTraveler;
 use App\Models\FixedDeparture;
 use App\Models\Lead;
 use App\Models\Package;
@@ -14,6 +16,7 @@ use LogicException;
 use Spatie\Permission\Models\Role;
 use App\Policies\CustomerPolicy;
 use App\Policies\BookingPolicy;
+use App\Policies\BookingTravelerPolicy;
 use App\Policies\LeadPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\TenantUserPolicy;
@@ -66,6 +69,39 @@ test('booking policy restricts booking access to authorized tenant staff', funct
 
     expect((new BookingPolicy)->view($owner, $booking))->toBeTrue()
         ->and((new BookingPolicy)->view($otherStaff, $booking))->toBeFalse();
+});
+
+test('booking travelers are encrypted and isolated by tenant', function () {
+    $tenant = crmTenant('First Agency', 'first-agency');
+    $otherTenant = crmTenant('Second Agency', 'second-agency');
+
+    app(TenantContext::class)->set($tenant);
+    $staff = TenantUser::factory()->create();
+    $role = Role::create([
+        'name' => 'Operations',
+        'guard_name' => 'tenant',
+        'team_id' => $tenant->id,
+    ]);
+    $staff->assignRole($role);
+    $booking = Booking::query()->create([
+        'customer_id' => Customer::factory()->create()->id,
+        'trip_name' => 'Local trip',
+    ]);
+    $traveler = BookingTraveler::query()->create([
+        'booking_id' => $booking->id,
+        'name' => 'Asha Traveler',
+        'passport_no' => 'P1234567',
+        'document_status' => 'pending',
+    ]);
+
+    expect($traveler->passport_no)->toBe('P1234567')
+        ->and(BookingTraveler::query()->withoutGlobalScopes()->find($traveler->id)->tenant_id)
+        ->toBe($tenant->id)
+        ->and((new BookingTravelerPolicy)->view($staff, $traveler))->toBeTrue();
+
+    app(TenantContext::class)->set($otherTenant);
+
+    expect(BookingTraveler::query()->find($traveler->id))->toBeNull();
 });
 
 test('a lead converts to a booking and reserves fixed departure capacity', function () {

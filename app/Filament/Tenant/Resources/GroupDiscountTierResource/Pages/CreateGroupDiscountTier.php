@@ -6,4 +6,9 @@ use Filament\Resources\Pages\CreateRecord;
 class CreateGroupDiscountTier extends CreateRecord
 {
     protected static string $resource = GroupDiscountTierResource::class;
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
 }

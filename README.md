@@ -20,8 +20,8 @@ business schema:
 - Pricing and operations tables: `promo_codes`, `gift_vouchers`,
   `booking_waitlist`, `reminders`, `services`, and `service_availability`.
 - Billing tables: `invoices`, `invoice_items`, and `payments`.
-- Public and communication tables: `public_lead_pages`, email template
-  catalogs, campaigns, recipients, unsubscribes, and notifications.
+- Public and communication tables: `public_lead_pages`, email template catalogs,
+  campaigns, recipients, unsubscribes, and notifications.
 - Platform tables: `saas_leads` and platform-owned email templates.
 - Row-locked fixed-departure capacity reservations.
 - Permission, activity-log, and media-library package scaffolding.
@@ -43,9 +43,9 @@ implemented phase by phase below.
 - Seeded development accounts and clean Docker migration/seeding verification
   completed.
 
-Phase 1 and Phase 2 catalog delivery are complete. The tenant panel now
-supports package, include/exclude, fixed departure, discount tier, service, and
-service availability CRUD with tenant isolation.
+Phase 1 and Phase 2 catalog delivery are complete. The tenant panel now supports
+package, include/exclude, fixed departure, discount tier, service, and service
+availability CRUD with tenant isolation.
 
 ### Phase 2 execution log
 
@@ -160,8 +160,8 @@ docker compose exec app vendor/bin/pint --dirty
 ```
 
 `DatabaseSeeder` also invokes `PermissionSeeder`, which creates the
-`super_admin`, tenant, and customer guard permissions and assigns tenant
-owner, sales, operations, and portal roles for the seeded demo accounts.
+`super_admin`, tenant, and customer guard permissions and assigns tenant owner,
+sales, operations, and portal roles for the seeded demo accounts.
 
 View logs or stop the stack:
 
@@ -282,26 +282,25 @@ YYYY_MM_DD_HHMMSS_create_bookings_table.php
 YYYY_MM_DD_HHMMSS_add_cancelled_reason_to_bookings_table.php
 ```
 
-Use one migration per table for new work. Only tightly coupled tables created
-in the same feature may share a migration, and the filename must name that
-bounded domain. Do not use generic names such as `create_architecture_tables`.
-Never rename an applied migration; create a new migration for later changes.
+Use one migration per table for new work. Only tightly coupled tables created in
+the same feature may share a migration, and the filename must name that bounded
+domain. Do not use generic names such as `create_architecture_tables`. Never
+rename an applied migration; create a new migration for later changes.
 
-The initial development reset uses
-`create_travel_business_tables.php` for the already-designed CRM, booking,
-pricing, billing, and communication schema. Future changes must follow the
-precise naming convention above.
+The initial development reset uses `create_travel_business_tables.php` for the
+already-designed CRM, booking, pricing, billing, and communication schema.
+Future changes must follow the precise naming convention above.
 
 The main domain groups are:
 
-| Group | Tables |
-| --- | --- |
-| Identity and tenancy | `tenants`, `super_admins`, `tenant_users`, `customers`, `subscription_plans`, `tenant_subscriptions` |
-| Travel catalog | `packages`, `include_excludes`, `fixed_departures`, `group_discount_tiers`, `services`, `service_availability` |
-| CRM and bookings | `leads`, `bookings`, `booking_travelers`, `booking_documents`, `booking_addons`, `booking_include_exclude`, `booking_waitlist` |
-| Pricing and billing | `promo_codes`, `gift_vouchers`, `invoices`, `invoice_items`, `payments` |
-| Public and reminders | `public_lead_pages`, `reminders` |
-| Email and platform | `email_template_types`, `email_templates`, `platform_email_templates`, `saas_leads`, `email_campaigns`, `email_campaign_recipients`, `email_unsubscribes`, `notifications` |
+| Group                | Tables                                                                                                                                                                     |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity and tenancy | `tenants`, `super_admins`, `tenant_users`, `customers`, `subscription_plans`, `tenant_subscriptions`                                                                       |
+| Travel catalog       | `packages`, `include_excludes`, `fixed_departures`, `group_discount_tiers`, `services`, `service_availability`                                                             |
+| CRM and bookings     | `leads`, `bookings`, `booking_travelers`, `booking_documents`, `booking_addons`, `booking_include_exclude`, `booking_waitlist`                                             |
+| Pricing and billing  | `promo_codes`, `gift_vouchers`, `invoices`, `invoice_items`, `payments`                                                                                                    |
+| Public and reminders | `public_lead_pages`, `reminders`                                                                                                                                           |
+| Email and platform   | `email_template_types`, `email_templates`, `platform_email_templates`, `saas_leads`, `email_campaigns`, `email_campaign_recipients`, `email_unsubscribes`, `notifications` |
 
 Money is stored as integer minor units. Booking itinerary and flexible
 configuration data use PostgreSQL JSON columns. Passport numbers are encrypted
@@ -319,9 +318,11 @@ The schema is complete, but application behavior is delivered incrementally:
    catalogs, fixed departures, capacity locking, discount tiers, and services.
    **Completed.**
 3. **Phase 3 - CRM:** customer management, lead pipeline, staff roles, lead
-   assignment, and lead-to-booking conversion.
+   assignment, and lead-to-booking conversion. **Completed.**
 4. **Phase 4 - Booking and billing:** bookings, travelers, private documents,
    add-ons, invoices, invoice numbering, discounts, and payment records.
+   **In progress:** tenant-scoped booking traveler management with encrypted
+   passport numbers and cross-tenant authorization coverage.
 5. **Phase 5 - Public website/API:** tenant resolution, published package and
    departure read APIs, public inquiry forms, waitlist entry, rate limiting,
    resources, and caching.

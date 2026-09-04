@@ -3,9 +3,9 @@
 namespace App\Filament\Tenant\Resources\BookingResource\Pages;
 
 use App\Filament\Tenant\Resources\BookingResource;
-use Filament\Resources\Pages\EditRecord;
+use Filament\Resources\Pages\CreateRecord;
 
-class EditBooking extends EditRecord
+class CreateBooking extends CreateRecord
 {
     protected static string $resource = BookingResource::class;
 

@@ -4,6 +4,7 @@ namespace App\Filament\Tenant\Resources;
 
 use App\Filament\Tenant\Resources\StaffResource\Pages;
 use App\Models\TenantUser;
+use App\Support\TenantContext;
 use BackedEnum;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -13,6 +14,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use UnitEnum;
 
 class StaffResource extends Resource
@@ -31,7 +33,12 @@ class StaffResource extends Resource
     {
         return $schema->components([
             TextInput::make('name')->required()->maxLength(255),
-            TextInput::make('email')->email()->required()->maxLength(255),
+            TextInput::make('email')->email()->required()->maxLength(255)
+                ->rules(fn (?TenantUser $record): array => [
+                    Rule::unique('tenant_users', 'email')
+                        ->where('tenant_id', app(TenantContext::class)->id())
+                        ->ignore($record?->getKey()),
+                ]),
             TextInput::make('password')->password()->revealable()->dehydrated(fn (?string $state): bool => filled($state))
                 ->dehydrateStateUsing(fn (string $state): string => Hash::make($state))
                 ->required(fn (string $operation): bool => $operation === 'create'),

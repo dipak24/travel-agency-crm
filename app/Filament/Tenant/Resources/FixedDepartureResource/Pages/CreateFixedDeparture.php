@@ -6,4 +6,9 @@ use Filament\Resources\Pages\CreateRecord;
 class CreateFixedDeparture extends CreateRecord
 {
     protected static string $resource = FixedDepartureResource::class;
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
 }

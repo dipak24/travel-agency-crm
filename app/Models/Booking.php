@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Booking extends Model
@@ -56,5 +57,10 @@ class Booking extends Model
     public function createdByStaff(): BelongsTo
     {
         return $this->belongsTo(TenantUser::class, 'created_by_staff_id');
+    }
+
+    public function travelers(): HasMany
+    {
+        return $this->hasMany(BookingTraveler::class);
     }
 }

@@ -7,5 +7,10 @@ use Filament\Actions\DeleteAction;
 class EditGroupDiscountTier extends EditRecord
 {
     protected static string $resource = GroupDiscountTierResource::class;
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
     protected function getHeaderActions(): array { return [DeleteAction::make()]; }
 }

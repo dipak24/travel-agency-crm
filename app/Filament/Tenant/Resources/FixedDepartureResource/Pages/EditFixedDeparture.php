@@ -7,5 +7,10 @@ use Filament\Actions\DeleteAction;
 class EditFixedDeparture extends EditRecord
 {
     protected static string $resource = FixedDepartureResource::class;
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
     protected function getHeaderActions(): array { return [DeleteAction::make()]; }
 }

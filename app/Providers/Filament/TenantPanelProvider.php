@@ -56,6 +56,7 @@ class TenantPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-            ]);
+                ResolveTenant::class,
+            ], isPersistent: true);
     }
 }

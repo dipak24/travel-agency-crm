@@ -86,6 +86,31 @@ test('tenant staff can access the services resource', function () {
         ->assertOk();
 });
 
+test('seeded tenant owner can access CRM resource lists and create pages', function () {
+    $this->seed();
+
+    $staff = TenantUser::query()->withoutGlobalScopes()
+        ->where('email', 'staff@example.com')
+        ->firstOrFail();
+
+    foreach ([
+        '/tenant/customers',
+        '/tenant/customers/create',
+        '/tenant/leads',
+        '/tenant/leads/create',
+        '/tenant/staff',
+        '/tenant/staff/create',
+        '/tenant/bookings',
+        '/tenant/bookings/create',
+        '/tenant/booking-travelers',
+        '/tenant/booking-travelers/create',
+    ] as $path) {
+        $this->actingAs($staff, 'tenant')
+            ->get($path)
+            ->assertOk();
+    }
+});
+
 test('tenant-owned catalog create pages resolve the authenticated tenant', function () {
     $this->seed();
 
@@ -101,6 +126,53 @@ test('tenant-owned catalog create pages resolve the authenticated tenant', funct
         $this->actingAs($staff, 'tenant')
             ->get($path)
             ->assertOk();
+    }
+});
+
+test('tenant create pages redirect to their resource lists after saving', function () {
+    $createPages = [
+        \App\Filament\Tenant\Resources\BookingTravelerResource\Pages\CreateBookingTraveler::class,
+        \App\Filament\Tenant\Resources\CustomerResource\Pages\CreateCustomer::class,
+        \App\Filament\Tenant\Resources\FixedDepartureResource\Pages\CreateFixedDeparture::class,
+        \App\Filament\Tenant\Resources\GroupDiscountTierResource\Pages\CreateGroupDiscountTier::class,
+        \App\Filament\Tenant\Resources\IncludeExcludeResource\Pages\CreateIncludeExclude::class,
+        \App\Filament\Tenant\Resources\LeadResource\Pages\CreateLead::class,
+        \App\Filament\Tenant\Resources\PackageResource\Pages\CreatePackage::class,
+        \App\Filament\Tenant\Resources\RoleResource\Pages\CreateRole::class,
+        \App\Filament\Tenant\Resources\ServiceAvailabilityResource\Pages\CreateServiceAvailability::class,
+        \App\Filament\Tenant\Resources\ServiceResource\Pages\CreateService::class,
+        \App\Filament\Tenant\Resources\StaffResource\Pages\CreateStaff::class,
+    ];
+
+    foreach ($createPages as $createPage) {
+        $method = new ReflectionMethod($createPage, 'getRedirectUrl');
+
+        expect($method->isProtected())->toBeTrue()
+            ->and($method->getReturnType()?->getName())->toBe('string');
+    }
+});
+
+test('tenant edit pages redirect to their resource lists after saving', function () {
+    $editPages = [
+        \App\Filament\Tenant\Resources\BookingResource\Pages\EditBooking::class,
+        \App\Filament\Tenant\Resources\BookingTravelerResource\Pages\EditBookingTraveler::class,
+        \App\Filament\Tenant\Resources\CustomerResource\Pages\EditCustomer::class,
+        \App\Filament\Tenant\Resources\FixedDepartureResource\Pages\EditFixedDeparture::class,
+        \App\Filament\Tenant\Resources\GroupDiscountTierResource\Pages\EditGroupDiscountTier::class,
+        \App\Filament\Tenant\Resources\IncludeExcludeResource\Pages\EditIncludeExclude::class,
+        \App\Filament\Tenant\Resources\LeadResource\Pages\EditLead::class,
+        \App\Filament\Tenant\Resources\PackageResource\Pages\EditPackage::class,
+        \App\Filament\Tenant\Resources\RoleResource\Pages\EditRole::class,
+        \App\Filament\Tenant\Resources\ServiceAvailabilityResource\Pages\EditServiceAvailability::class,
+        \App\Filament\Tenant\Resources\ServiceResource\Pages\EditService::class,
+        \App\Filament\Tenant\Resources\StaffResource\Pages\EditStaff::class,
+    ];
+
+    foreach ($editPages as $editPage) {
+        $method = new ReflectionMethod($editPage, 'getRedirectUrl');
+
+        expect($method->isProtected())->toBeTrue()
+            ->and($method->getReturnType()?->getName())->toBe('string');
     }
 });
 

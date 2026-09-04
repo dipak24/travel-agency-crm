@@ -4,6 +4,7 @@ namespace App\Filament\Tenant\Resources;
 
 use App\Filament\Tenant\Resources\CustomerResource\Pages;
 use App\Models\Customer;
+use App\Support\TenantContext;
 use BackedEnum;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -12,6 +13,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Validation\Rule;
 use UnitEnum;
 
 class CustomerResource extends Resource
@@ -28,8 +30,18 @@ class CustomerResource extends Resource
     {
         return $schema->components([
             TextInput::make('name')->required()->maxLength(255),
-            TextInput::make('email')->email()->required()->maxLength(255),
-            TextInput::make('phone')->maxLength(255),
+            TextInput::make('email')->email()->required()->maxLength(255)
+                ->rules(fn (?Customer $record): array => [
+                    Rule::unique('customers', 'email')
+                        ->where('tenant_id', app(TenantContext::class)->id())
+                        ->ignore($record?->getKey()),
+                ]),
+            TextInput::make('phone')->maxLength(255)
+                ->rules(fn (?Customer $record): array => [
+                    Rule::unique('customers', 'phone')
+                        ->where('tenant_id', app(TenantContext::class)->id())
+                        ->ignore($record?->getKey()),
+                ]),
             Select::make('type')->options([
                 'individual' => 'Individual',
                 'agency' => 'Agency',

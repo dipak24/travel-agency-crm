@@ -6,4 +6,9 @@ use Filament\Resources\Pages\CreateRecord;
 class CreateIncludeExclude extends CreateRecord
 {
     protected static string $resource = IncludeExcludeResource::class;
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
 }
