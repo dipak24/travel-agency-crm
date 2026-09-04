@@ -2,6 +2,8 @@
 
 use App\Models\Customer;
 use App\Models\Booking;
+use App\Models\BookingAddon;
+use App\Models\BookingDocument;
 use App\Models\BookingTraveler;
 use App\Models\FixedDeparture;
 use App\Models\Lead;
@@ -14,6 +16,8 @@ use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use LogicException;
 use Spatie\Permission\Models\Role;
+use App\Policies\BookingAddonPolicy;
+use App\Policies\BookingDocumentPolicy;
 use App\Policies\CustomerPolicy;
 use App\Policies\BookingPolicy;
 use App\Policies\BookingTravelerPolicy;

@@ -65,6 +65,10 @@ class PermissionSeeder extends Seeder
             'create bookings',
             'update bookings',
             'delete bookings',
+            'view invoices',
+            'create invoices',
+            'update invoices',
+            'delete invoices',
             'view catalog',
             'create catalog',
             'update catalog',
@@ -82,12 +86,19 @@ class PermissionSeeder extends Seeder
                 'view customers', 'create customers', 'update customers',
                 'view leads', 'create leads', 'update leads',
                 'view bookings', 'update bookings',
+                'view invoices',
             ])->get());
 
         $operations = $this->role($tenant, 'Operations');
         $operations->syncPermissions(Permission::query()
             ->where('guard_name', 'tenant')
-            ->whereIn('name', ['view bookings', 'update bookings'])->get());
+            ->whereIn('name', ['view bookings', 'update bookings', 'view invoices'])->get());
+
+        $accountant = $this->role($tenant, 'Accountant');
+        $accountant->syncPermissions(Permission::query()
+            ->where('guard_name', 'tenant')
+            ->whereIn('name', ['view invoices', 'create invoices', 'update invoices', 'delete invoices'])
+            ->get());
 
         $staff = TenantUser::query()->withoutGlobalScopes()
             ->where('tenant_id', $tenant->getKey())
