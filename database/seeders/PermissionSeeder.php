@@ -34,10 +34,12 @@ class PermissionSeeder extends Seeder
             'manage platform',
         ], 'super_admin');
 
+        // Super admins aren't tenant-scoped, so platform roles use the fixed
+        // sentinel team id (0) instead of a real tenant id — see ResolvePlatformTeam.
         $role = Role::query()->firstOrCreate([
             'name' => 'Super Admin',
             'guard_name' => 'super_admin',
-            'team_id' => null,
+            'team_id' => 0,
         ]);
         $role->syncPermissions($permissions);
     }

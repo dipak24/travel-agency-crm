@@ -800,3 +800,167 @@ on every resource, **(3)** encrypted casts on `passport_no`, **(4)**
 integers/DECIMAL. Everything else here matters, but those five are the ones that
 are expensive to retrofit once real tenant data exists — the rest can be
 tightened incrementally after launch.
+
+---
+
+## 13. Dependency-Based Roadmap Audit (2026-09-04)
+
+Requested: a from-scratch, dependency-driven re-derivation of the phase plan
+("Phase 0 → Phase N"), auditing Phases 1–3 for gaps, wrong ordering, and
+missing production-SaaS features. Done as a full codebase inventory (models,
+migrations, Filament resources, policies, tests, routes) against this doc and
+`DELIVERY_ROADMAP.md`, not from memory or generic SaaS advice.
+
+### Premise correction — don't renumber
+
+The request assumed Phases 1–3 are still on paper. They're not: Phases 1–3
+(tenancy/guards/panels/permissions, catalog, CRM) are **built, tested, and
+merged** — 20 models, tenant-scoped Policies, and passing Pest suites
+(`TenantIsolationTest`, `CrmModulesTest`, `CatalogModulesTest`, etc.) confirm
+it. Phase 4 is ~60% built (bookings/travelers/documents/add-ons/invoices exist
+with tests; Payment and two UI pieces don't — see `DELIVERY_ROADMAP.md`).
+
+The git branch is literally named `phase-four`, and commit history references
+"Phase 3 completed" / "phase three partially completed." **Renumbering to a
+Phase 0→10 scheme would only create confusion against real branch/commit
+history for no engineering benefit** — the dependency analysis below confirms
+the *existing* 8-phase order was already correct. So this audit keeps the
+existing numbering and annotates it, rather than replacing it.
+
+The one assumption in the request worth explicitly overturning: **a full
+Super Admin UI was never actually a blocking dependency for tenant-scoped
+business features.** Phases 2–4 were built and tenant-isolation-tested against
+seeded `tenants` rows with zero Super Admin Filament resources in existence —
+proof that the real dependency is a `tenants` row + a working tenant
+guard/global-scope, not a CRUD screen on top of it. What's genuinely overdue
+is the *operational* gap this leaves (no way to onboard a real tenant without
+tinker/seeders) — already folded into Phase 4's remaining-work list.
+
+### Verified findings from this audit (new, not previously documented)
+
+| Area | Finding |
+| --- | --- |
+| Audit logging | `spatie/laravel-activitylog` is a composer dependency but **no model uses `LogsActivity`** — the Super Admin "Audit Log Viewer" module (§5) and the impersonation-logging requirement (§12) have nothing to read yet. Real gap, not yet on any phase's task list. |
+| Document storage | Better than assumed: `BookingResource`'s `FileUpload` already uses `disk('local')`, `visibility('private')`, and a MIME allowlist (`pdf`/`jpeg`/`png`) — adequate for MVP. No signed-URL/S3 migration yet, but §12 already correctly scopes that to "once you have multiple tenants," not now. |
+| Super Admin / Portal panels | `app/Filament/Resources` (super_admin) and `app/Filament/Portal/Resources` (customer) directories don't exist — zero resources in either panel. Confirms Phase 4/6 gaps already tracked. |
+
+### Dependency graph (as actually built, verified against the codebase)
+
+```
+DB schema + tenant model + 3 guards/panels (Phase 1)
+   ↓
+Spatie roles/permissions in tenant-team mode, tenant global scope (Phase 1)
+   ↓                                              ↘
+Catalog: packages, fixed departures,          Super Admin resources
+include/exclude, discount tiers (Phase 2)      (NOT built — only seeded
+   ↓                                            tenants exist; not a hard
+Customers, leads, staff roles,                  blocker in practice, but
+lead→booking conversion (Phase 3)               blocks real tenant onboarding)
+   ↓
+Bookings, travelers, documents, add-ons,
+invoices + numbering (Phase 4 — in progress)
+   ↓                        ↘
+Customer portal (Phase 6)    Payment gateway backend/webhooks (Phase 7,
+   reads bookings/invoices/    signature verification etc. — doesn't need
+   documents from Phase 4      portal UI, can start in parallel with Phase 6)
+   ↓                        ↙
+Portal "pay invoice" UI needs BOTH Phase 6 (portal shell) and Phase 7 (gateway)
+
+Public API + inquiry form (Phase 5) only needs Phase 2 (packages/departures)
+   + Phase 3 (leads) — does NOT need Phase 4. Confirmed independent branch;
+   your original doc's "can run in parallel with Phase 4" note was correct.
+
+Reminders (Phase 8) need Phase 4 (documents/travelers/invoices) as their
+data source — correctly sequenced after.
+Email templates/campaigns (Phase 8) only need Phase 1 (tenants) + Phase 3
+(customers) — no dependency on Phase 4 at all. Currently bundled into
+Phase 8 by convenience, not by dependency; can be pulled forward if a
+second dev track has spare capacity.
+Feature-limit enforcement (Phase 8) only needs Phase 1's subscription_plans
+table — same story, low priority only because billing isn't charging yet.
+```
+
+### Missing-feature checklist — evaluated against this project's locked decisions
+
+Going through the requested brainstorm list. Anything already resolved in
+§9 "Decisions Locked In" is not re-litigated here.
+
+**Real gaps, not yet on any phase (recommend adding):**
+- Audit logging wiring (`LogsActivity` on tenant-scoped models + impersonation
+  log) — belongs in Phase 4 or 8; recommend Phase 4 since Policies are already
+  being touched there, and it's cheap to add per-model now vs. backfilling
+  history later.
+- Tenant self-service settings page (currency/timezone/branding fields exist
+  on `tenants`, no UI to edit them) — pair with the Super Admin tenant CRUD
+  work already added to Phase 4.
+- Impersonation flow itself (§12 requires start/end logging + UI banner) —
+  depends on Super Admin panel existing; slot into Phase 4/8 alongside it.
+
+**Correctly deferred (already the right phase, no change):**
+Refunds/reconciliation (Phase 7 — needs a real gateway integration first),
+notifications/dashboards/reports (Phase 8 — needs Phase 4 data to report on),
+feature-limit enforcement (Phase 8 — no billing pressure yet).
+
+**Explicitly excluded per your own locked decisions (§9), not omissions:**
+Multi-currency (USD-only, decided), customer self-registration (invite-only,
+decided), SMS/WhatsApp reminders (email-only for now, decided).
+
+**Framework defaults, not roadmap items:** email verification, password
+reset, session management — Laravel/Filament ship these; nothing here needs
+custom design work, only needs confirming they're turned on for all 3 guards
+when the Super Admin panel is built (add as a one-line check, not a task).
+
+**Not relevant at this scale, correctly excluded:** database-per-tenant,
+GDPR/data-residency tooling, multi-language UI, import/export, Facebook lead
+integrations, webhook layer for third parties — all already flagged in §10 as
+post-MVP "features worth considering" and none block anything above them.
+
+### MVP vs. should-have vs. later
+
+- **Must-have for MVP (blocks a usable first tenant going live):** finish
+  Phase 4 as scoped (incl. the new audit-log/settings/impersonation items
+  above), Phase 5 public site + API, Phase 6 portal, Phase 7 PayPal path only
+  (HBL can trail).
+- **Should-have shortly after MVP:** promo codes/gift vouchers (already
+  flagged as a Phase 4 scope decision), cancellation/refund policy,
+  installment payment schedules, HBL gateway, basic dashboards/reports.
+- **Later/advanced, don't let these block launch:** feature-limit
+  enforcement/billing UI, email marketing campaigns, staff commission
+  tracking, guide/vehicle assignment, reviews/testimonials, 2FA rollout
+  beyond `super_admins`, S3 migration, Scout/Meilisearch search.
+
+### Critical path to a usable SaaS
+
+```
+Phase 1 → Phase 2 → Phase 3 → Phase 4 (incl. Payment UI + Super Admin
+tenant CRUD) → Phase 6 (portal) → Phase 7 (PayPal only) → soft launch
+```
+Phase 5 (public API) and Phase 8's email-template/campaign piece are **not**
+on this critical path — they're parallelizable, not blocking, per the
+dependency graph above.
+
+### Parallel development opportunities (with current team reality: mostly
+solo/small team, so treat this as "what to interleave," not literally
+simultaneous tracks)
+
+```
+Phase 4 (finish booking/billing)
+   ├── Phase 5 — public API + inquiry form (needs only Phase 2+3, independent)
+   └── Phase 7 backend — PayPal/HBL webhook handlers + signature verification
+        (needs Invoice/Payment models only, not portal UI)
+
+Anytime after Phase 3:
+   └── Email template/campaign models + Super Admin platform-template UI
+        (needs only tenants + customers, no dependency on Phase 4)
+```
+
+### Production-readiness checklist — status, not a re-derivation
+
+§12 above already covers this in depth; status against it now: tenant
+isolation ✅ (tested), Filament Policies ✅ (on every model that has a
+resource — Payment is the exception once its resource exists), encrypted PII
+✅ (`passport_no`), private+MIME-checked file uploads ✅, money as
+DECIMAL/cents — **not independently re-verified in this audit, confirm before
+Phase 4 sign-off**, activity logging ❌ (new finding above), payment webhook
+signature verification — not yet built (Phase 7, correctly deferred), 2FA —
+not yet built (correctly deferred per §10).

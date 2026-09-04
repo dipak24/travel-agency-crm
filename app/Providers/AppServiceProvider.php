@@ -12,11 +12,12 @@ use App\Models\FixedDeparture;
 use App\Models\GroupDiscountTier;
 use App\Models\IncludeExclude;
 use App\Models\Invoice;
+use App\Models\Lead;
 use App\Models\Package;
 use App\Models\Service;
 use App\Models\ServiceAvailability;
+use App\Models\SuperAdmin;
 use App\Models\TenantUser;
-use App\Models\Lead;
 use App\Policies\BookingAddonPolicy;
 use App\Policies\BookingDocumentPolicy;
 use App\Policies\BookingPolicy;
@@ -25,12 +26,14 @@ use App\Policies\CustomerPolicy;
 use App\Policies\InvoicePolicy;
 use App\Policies\LeadPolicy;
 use App\Policies\RolePolicy;
+use App\Policies\SuperAdminPolicy;
 use App\Policies\TenantCatalogPolicy;
 use App\Policies\TenantUserPolicy;
-use Illuminate\Support\Facades\Gate;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Spatie\Permission\Models\Role;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -48,6 +51,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::policy(TenantUser::class, TenantUserPolicy::class);
+        Gate::policy(SuperAdmin::class, SuperAdminPolicy::class);
         Gate::policy(Customer::class, CustomerPolicy::class);
         Gate::policy(Lead::class, LeadPolicy::class);
         Gate::policy(Booking::class, BookingPolicy::class);
@@ -55,7 +59,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(BookingAddon::class, BookingAddonPolicy::class);
         Gate::policy(Invoice::class, InvoicePolicy::class);
         Gate::policy(BookingTraveler::class, BookingTravelerPolicy::class);
-        Gate::policy(\Spatie\Permission\Models\Role::class, RolePolicy::class);
+        Gate::policy(Role::class, RolePolicy::class);
         Gate::policy(Package::class, TenantCatalogPolicy::class);
         Gate::policy(IncludeExclude::class, TenantCatalogPolicy::class);
         Gate::policy(FixedDeparture::class, TenantCatalogPolicy::class);

@@ -12,6 +12,7 @@ use App\Support\TenantContext;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class DatabaseSeeder extends Seeder
 {
@@ -22,7 +23,7 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        SuperAdmin::query()->updateOrCreate(
+        $admin = SuperAdmin::query()->updateOrCreate(
             ['email' => 'admin@example.com'],
             ['name' => 'Platform Admin', 'password' => 'password', 'status' => 'active'],
         );
@@ -62,5 +63,10 @@ class DatabaseSeeder extends Seeder
         app(TenantContext::class)->clear();
 
         $this->call(PermissionSeeder::class);
+
+        // Super admins use the fixed sentinel team id (0) — see ResolvePlatformTeam.
+        app(PermissionRegistrar::class)->setPermissionsTeamId(0);
+        $admin->assignRole(Role::findOrCreate('Super Admin', 'super_admin'));
+        app(PermissionRegistrar::class)->setPermissionsTeamId(null);
     }
 }

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "laravel-boost": {
+      "type": "stdio",
+      "command": "docker",
+      "args": ["exec", "-i", "travel-agency-crm-app-1", "php", "artisan", "boost:mcp"]
+    }
+  }
+}

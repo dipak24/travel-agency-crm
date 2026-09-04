@@ -307,36 +307,11 @@ configuration data use PostgreSQL JSON columns. Passport numbers are encrypted
 at the model layer, and booking documents are represented by private file
 metadata rather than public paths.
 
-## Delivery Roadmap
-
-The schema is complete, but application behavior is delivered incrementally:
-
-1. **Phase 1 - Foundation:** tenancy, three guards, Filament panels, seeded
-   accounts, tenant-aware Spatie permissions, tenant scope, onboarding, and
-   isolation tests. **Completed.**
-2. **Phase 2 - Catalog:** package CRUD, itinerary editing, include/exclude
-   catalogs, fixed departures, capacity locking, discount tiers, and services.
-   **Completed.**
-3. **Phase 3 - CRM:** customer management, lead pipeline, staff roles, lead
-   assignment, and lead-to-booking conversion. **Completed.**
-4. **Phase 4 - Booking and billing:** bookings, travelers, private documents,
-   add-ons, invoices, invoice numbering, discounts, and payment records.
-   **In progress:** tenant-scoped booking traveler management with encrypted
-   passport numbers and cross-tenant authorization coverage.
-5. **Phase 5 - Public website/API:** tenant resolution, published package and
-   departure read APIs, public inquiry forms, waitlist entry, rate limiting,
-   resources, and caching.
-6. **Phase 6 - Customer portal:** invite-only access, booking history,
-   traveler/document workflows, add-on requests, and read-only trip details.
-7. **Phase 7 - Payments:** verified PayPal webhooks, HBL gateway integration,
-   refunds, and payment reconciliation.
-8. **Phase 8 - Operations:** reminder jobs, email templates and campaigns,
-   notifications, audit views, dashboards, reports, and feature-limit
-   enforcement.
-
-Each phase requires focused Pest coverage, cross-tenant read/write regression
-tests for tenant-owned features, `vendor/bin/pint`, and a clean PostgreSQL
-`migrate:fresh --seed` run in Docker before it is considered complete.
+See [DELIVERY_ROADMAP.md](DELIVERY_ROADMAP.md) for the phased build plan and
+current status. Each phase requires focused Pest coverage, cross-tenant
+read/write regression tests for tenant-owned features, `vendor/bin/pint`, and
+a clean PostgreSQL `migrate:fresh --seed` run in Docker before it is
+considered complete.
 
 ## Coding Standards
 
