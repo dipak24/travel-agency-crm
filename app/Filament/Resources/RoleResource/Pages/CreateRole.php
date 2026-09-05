@@ -2,11 +2,14 @@
 
 namespace App\Filament\Resources\RoleResource\Pages;
 
+use App\Filament\Concerns\HasFullWidthForm;
 use App\Filament\Resources\RoleResource;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateRole extends CreateRecord
 {
+    use HasFullWidthForm;
+
     protected static string $resource = RoleResource::class;
 
     protected function getRedirectUrl(): string

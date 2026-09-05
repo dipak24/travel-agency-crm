@@ -16,10 +16,22 @@ class Payment extends Model
         'amount',
         'currency',
         'method',
+        'type',
         'status',
         'transaction_ref',
         'paid_at',
     ];
+
+    protected static function booted(): void
+    {
+        static::saved(function (self $payment): void {
+            $payment->invoice()->withoutGlobalScopes()->first()?->recalculateStatus();
+        });
+
+        static::deleted(function (self $payment): void {
+            $payment->invoice()->withoutGlobalScopes()->first()?->recalculateStatus();
+        });
+    }
 
     protected function casts(): array
     {

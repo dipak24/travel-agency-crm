@@ -2,12 +2,15 @@
 
 namespace App\Filament\Tenant\Resources\RoleResource\Pages;
 
+use App\Filament\Concerns\HasFullWidthForm;
 use App\Filament\Tenant\Resources\RoleResource;
 use App\Support\TenantContext;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateRole extends CreateRecord
 {
+    use HasFullWidthForm;
+
     protected static string $resource = RoleResource::class;
 
     protected function getRedirectUrl(): string

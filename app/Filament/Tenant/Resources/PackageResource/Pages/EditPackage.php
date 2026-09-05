@@ -2,12 +2,15 @@
 
 namespace App\Filament\Tenant\Resources\PackageResource\Pages;
 
+use App\Filament\Concerns\HasFullWidthForm;
 use App\Filament\Tenant\Resources\PackageResource;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
 class EditPackage extends EditRecord
 {
+    use HasFullWidthForm;
+
     protected static string $resource = PackageResource::class;
 
     protected function getRedirectUrl(): string

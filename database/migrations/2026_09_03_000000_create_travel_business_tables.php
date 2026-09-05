@@ -233,6 +233,7 @@ return new class extends Migration
             $table->unsignedBigInteger('amount')->default(0);
             $table->string('currency', 3)->default('USD');
             $table->string('method');
+            $table->string('type')->default('installment');
             $table->string('status')->default('pending');
             $table->string('transaction_ref')->nullable();
             $table->timestamp('paid_at')->nullable();

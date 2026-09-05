@@ -3,12 +3,15 @@
 namespace App\Filament\Tenant\Resources;
 
 use App\Filament\Tenant\Resources\InvoiceResource\Pages;
+use App\Filament\Tenant\Resources\InvoiceResource\RelationManagers\PaymentsRelationManager;
 use App\Models\Invoice;
 use BackedEnum;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -69,10 +72,18 @@ class InvoiceResource extends Resource
                 'draft' => 'Draft',
                 'issued' => 'Issued',
                 'paid' => 'Paid',
+                'partially_paid' => 'Partially paid',
                 'overdue' => 'Overdue',
                 'cancelled' => 'Cancelled',
             ])->required(),
             DatePicker::make('due_date')->label('Due date')->native(false),
+            Section::make('Payments')
+                ->visibleOn('edit')
+                ->schema([
+                    Placeholder::make('paid_display')->label('Amount paid')->content(fn (Invoice $record): string => (string) $record->paidAmount()),
+                    Placeholder::make('balance_display')->label('Balance due')->content(fn (Invoice $record): string => (string) $record->balanceDue()),
+                ])
+                ->columns(1),
         ]);
     }
 
@@ -86,6 +97,13 @@ class InvoiceResource extends Resource
             TextColumn::make('status')->badge()->sortable(),
             TextColumn::make('due_date')->date()->sortable(),
         ])->defaultSort('created_at', 'desc');
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            PaymentsRelationManager::class,
+        ];
     }
 
     public static function getPages(): array

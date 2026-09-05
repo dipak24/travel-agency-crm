@@ -216,14 +216,34 @@ it as a to-check/to-build item either way.
 - [x] Delete role (mechanism is in place via `RolePolicy`; no UI delete action is
       wired up on the table yet, matching the tenant `RoleResource` convention)
 
-**Plans & Subscriptions**
+**Plans & Subscriptions** — built
 
-- [ ] Create plan
-- [ ] List plans
-- [ ] Edit plan (feature limits: max staff, max bookings/month, etc.)
-- [ ] Archive/delete plan
-- [ ] Assign plan to a tenant
-- [ ] View a tenant's subscription status (trialing/active/past_due/cancelled)
+- [x] Create plan
+- [x] List plans
+- [x] Edit plan (feature limits: max staff, max bookings/month, etc.)
+- [x] Archive/delete plan (via the `is_active` toggle — no hard delete, since
+      `tenant_subscriptions.plan_id` restricts deletion of a plan in use)
+- [x] Assign plan to a tenant (already existed via `TenantResource`)
+- [x] View a tenant's subscription status (trialing/active/past_due/cancelled)
+      — badge column on `TenantResource`'s table
+
+**Tenant Billing (Invoices & Transactions)** — built
+
+- [x] Manually create a platform invoice per tenant (subscription, hosting,
+      domain, service fee, setup fee, or other line items),
+      `TenantInvoiceResource`
+- [x] Itemized line items with auto-computed subtotal/total
+- [x] Record a transaction/payment against an invoice, supporting multiple
+      partial payments and advance/installment/final/refund types,
+      `TenantPaymentResource` + `PaymentsRelationManager`
+- [x] Invoice status auto-transitions (issued → partially_paid → paid) from
+      the payment ledger
+- [x] PDF export
+- [ ] Automatic recurring invoice generation from `tenant_subscriptions.
+      next_billing_at` — still the open Phase 13 "subscription billing
+      activation" item; this phase only adds manual invoicing and the schema
+      (`tenant_subscription_id` link, `period_start`/`period_end` on line
+      items) a future scheduled job would need
 
 **Dashboard**
 
@@ -338,7 +358,7 @@ unconfirmed
       Booking)
 - [ ] Upload / review document (no UI)
 - [ ] Add / manage add-on (no UI)
-- [ ] Record payment (no UI)
+- [x] Record payment — `PaymentResource`
 - [ ] Cancel booking
 
 **Invoice & Billing** — partial
@@ -349,8 +369,11 @@ unconfirmed
 - [ ] Itemized line-item management UI (`InvoiceItem` has no relation manager)
 - [ ] PDF export
 - [ ] Email invoice to customer
-- [ ] Mark paid / partial / overdue as an explicit action
-- [ ] Record a payment against an invoice (blocked on `Payment` resource)
+- [x] Mark paid / partial / overdue as an explicit action — automatic now,
+      driven by the payment ledger (`Invoice::recalculateStatus()`)
+- [x] Record a payment against an invoice — `PaymentResource` +
+      `InvoiceResource`'s `PaymentsRelationManager`, supports multiple
+      partial/advance payments per invoice
 
 **Document Management** — not started
 

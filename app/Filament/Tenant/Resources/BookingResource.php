@@ -8,8 +8,8 @@ use BackedEnum;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -47,7 +47,7 @@ class BookingResource extends Resource
                         'cancelled' => 'Cancelled',
                     ])->required(),
                 ])
-                ->columns(2),
+                ->columns(1),
             Section::make('Travel documents')
                 ->schema([
                     Repeater::make('documents')

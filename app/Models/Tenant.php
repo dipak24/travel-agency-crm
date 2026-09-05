@@ -48,4 +48,10 @@ class Tenant extends Model
         // already correct regardless of context.
         return $this->hasOne(TenantSubscription::class)->withoutGlobalScopes()->latestOfMany();
     }
+
+    public function tenantInvoices(): HasMany
+    {
+        // Same cross-tenant admin-panel need as activeSubscription() above.
+        return $this->hasMany(TenantInvoice::class)->withoutGlobalScopes();
+    }
 }

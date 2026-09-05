@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\TenantResource\Pages;
 
+use App\Filament\Concerns\HasFullWidthForm;
 use App\Filament\Resources\TenantResource;
 use App\Models\SubscriptionPlan;
 use App\Services\TenantOnboarding;
@@ -10,6 +11,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class CreateTenant extends CreateRecord
 {
+    use HasFullWidthForm;
+
     protected static string $resource = TenantResource::class;
 
     protected function handleRecordCreation(array $data): Model

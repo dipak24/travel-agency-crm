@@ -33,6 +33,7 @@ class PermissionSeeder extends Seeder
         $permissions = $this->permissions([
             'manage platform',
             'manage tenants',
+            'manage billing',
             'view roles',
             'create roles',
             'update roles',

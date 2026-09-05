@@ -4,19 +4,19 @@ namespace App\Filament\Tenant\Resources;
 
 use App\Filament\Tenant\Resources\PackageResource\Pages;
 use App\Models\Package;
+use BackedEnum;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Filament\Resources\Resource;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
-use BackedEnum;
 use UnitEnum;
 
 class PackageResource extends Resource
@@ -32,8 +32,10 @@ class PackageResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema
+            ->columns(1)
             ->components([
                 Section::make('Package details')
+                    ->columnSpanFull()
                     ->schema([
                         TextInput::make('name')
                             ->required()
@@ -78,11 +80,8 @@ class PackageResource extends Resource
                         Textarea::make('description')
                             ->columnSpanFull()
                             ->rows(4),
-                    ])
-                    ->columns(2),
-                Section::make('Itinerary')
-                    ->schema([
                         Repeater::make('itinerary')
+                            ->label('Itinerary')
                             ->schema([
                                 TextInput::make('title')
                                     ->label('Day title')
@@ -96,7 +95,8 @@ class PackageResource extends Resource
                             ->reorderable()
                             ->addActionLabel('Add itinerary day')
                             ->columnSpanFull(),
-                    ]),
+                    ])
+                    ->columns(2),
             ]);
     }
 

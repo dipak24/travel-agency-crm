@@ -7,6 +7,7 @@ use BackedEnum;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -26,19 +27,29 @@ class RoleResource extends Resource
 
     public static function form(Schema $schema): Schema
     {
-        return $schema->components([
-            TextInput::make('name')->required()->maxLength(255),
-            CheckboxList::make('permissions')
-                ->label('Permissions')
-                ->relationship(
-                    'permissions',
-                    'name',
-                    fn (Builder $query): Builder => $query->where('guard_name', 'super_admin'),
-                )
-                ->columns(2)
-                ->searchable()
-                ->bulkToggleable(),
-        ]);
+        return $schema
+            ->columns(1)
+            ->components([
+                Section::make('Role')
+                    ->columnSpanFull()
+                    ->schema([
+                        TextInput::make('name')->required()->maxLength(255),
+                    ]),
+                Section::make('Permissions')
+                    ->columnSpanFull()
+                    ->schema([
+                        CheckboxList::make('permissions')
+                            ->hiddenLabel()
+                            ->relationship(
+                                'permissions',
+                                'name',
+                                fn (Builder $query): Builder => $query->where('guard_name', 'super_admin'),
+                            )
+                            ->columns(3)
+                            ->searchable()
+                            ->bulkToggleable(),
+                    ]),
+            ]);
     }
 
     public static function table(Table $table): Table

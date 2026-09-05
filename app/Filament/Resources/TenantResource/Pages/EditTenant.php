@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\TenantResource\Pages;
 
+use App\Filament\Concerns\HasFullWidthForm;
 use App\Filament\Resources\TenantResource;
 use App\Models\Tenant;
 use App\Models\TenantSubscription;
@@ -10,6 +11,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditTenant extends EditRecord
 {
+    use HasFullWidthForm;
+
     protected static string $resource = TenantResource::class;
 
     private ?int $selectedPlanId = null;

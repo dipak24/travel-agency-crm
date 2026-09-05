@@ -44,91 +44,99 @@ class TenantResource extends Resource
 
     public static function form(Schema $schema): Schema
     {
-        return $schema->components([
-            Section::make('Platform settings')
-                ->schema([
-                    TextInput::make('slug')->required()->maxLength(255)->alphaDash()
-                        ->rules(fn (?Tenant $record): array => [
-                            Rule::unique('tenants', 'slug')->ignore($record?->getKey()),
-                        ]),
-                    Select::make('status')->options([
-                        'trial' => 'Trial',
-                        'active' => 'Active',
-                        'suspended' => 'Suspended',
-                    ])->required()->default('trial'),
-                ])
-                ->columns(2),
-            Section::make('Business details')
-                ->description('The tenant\'s public-facing identity and contact details.')
-                ->schema([
-                    TextInput::make('name')->label('Business name')->required()->maxLength(255),
-                    TextInput::make('address')->label('Business address')->maxLength(255)->columnSpanFull(),
-                    TextInput::make('phone_number')->tel()->maxLength(255)
-                        ->rules(fn (?Tenant $record): array => [
-                            Rule::unique('tenants', 'phone_number')->ignore($record?->getKey()),
-                        ]),
-                    TextInput::make('mobile_number')->tel()->maxLength(255)
-                        ->rules(fn (?Tenant $record): array => [
-                            Rule::unique('tenants', 'mobile_number')->ignore($record?->getKey()),
-                        ]),
-                    Select::make('timezone')->searchable()
-                        ->options(array_combine(DateTimeZone::listIdentifiers(), DateTimeZone::listIdentifiers()))
-                        ->required()->default('UTC'),
-                ])
-                ->columns(2),
-            Section::make('Branding')
-                ->description('Controls how the tenant panel looks once this tenant\'s staff log in. Only a platform admin can set this — it does not appear in the tenant panel itself.')
-                ->schema([
-                    ColorPicker::make('primary_color')->label('Primary color')
-                        ->helperText('Drives buttons, links, and active navigation in the tenant panel.'),
-                    ColorPicker::make('secondary_color')->label('Secondary color')
-                        ->helperText('Available as an accent color for the tenant panel.'),
-                    FileUpload::make('logo')
-                        ->image()
-                        ->disk('public')
-                        ->directory('tenant-logos')
-                        ->visibility('public')
-                        ->imagePreviewHeight('120')
-                        ->maxSize(2048)
-                        ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'])
-                        ->columnSpanFull(),
-                ])
-                ->columns(2),
-            Section::make('Billing details')
-                ->description('Where invoices and billing correspondence for this tenant are sent.')
-                ->schema([
-                    TextInput::make('billing_email')->label('Billing email')->email()->maxLength(255)
-                        ->rules(fn (?Tenant $record): array => [
-                            Rule::unique('tenants', 'billing_email')->ignore($record?->getKey()),
-                        ]),
-                    Select::make('currency')->searchable()->options(self::currencyOptions())->required()->default('USD'),
-                ])
-                ->columns(2),
-            Section::make('Owner account')
-                ->description('The first staff account for this tenant, created with the "Tenant Owner" role.')
-                ->schema([
-                    TextInput::make('owner_name')->label('Owner name')->required()->maxLength(255),
-                    TextInput::make('owner_email')->label('Owner email')->email()->required()->maxLength(255)
-                        ->rules([Rule::unique('tenant_users', 'email')]),
-                    TextInput::make('owner_password')->label('Owner password')->password()->revealable()->required()
-                        ->rules([Password::min(8)->mixedCase()->numbers()->symbols()])
-                        ->helperText('At least 8 characters, including an uppercase letter, a lowercase letter, a number, and a symbol.'),
-                ])
-                ->columns(2)
-                ->visibleOn('create'),
-            Section::make('Subscription')
-                ->schema([
-                    Select::make('plan_id')->label('Subscription plan')
-                        ->options(fn (): array => SubscriptionPlan::query()->where('is_active', true)->pluck('name', 'id')->all())
-                        ->searchable()
-                        ->required()
-                        ->default(fn (?Tenant $record): ?int => $record?->activeSubscription?->plan_id),
-                    DateTimePicker::make('trial_ends_at')->label('Trial ends at')
-                        ->minDate(now())
-                        ->helperText('Must be a future date and time.'),
-                ])
-                ->columns(2),
-        ]);
+        return $schema
+            ->columns(1)
+            ->components([
+                Section::make('Platform settings')
+                    ->columnSpanFull()
+                    ->schema([
+                        TextInput::make('slug')->required()->maxLength(255)->alphaDash()
+                            ->rules(fn (?Tenant $record): array => [
+                                Rule::unique('tenants', 'slug')->ignore($record?->getKey()),
+                            ]),
+                        Select::make('status')->options([
+                            'trial' => 'Trial',
+                            'active' => 'Active',
+                            'suspended' => 'Suspended',
+                        ])->required()->default('trial'),
+                    ])
+                    ->columns(2),
+                Section::make('Business details')
+                    ->columnSpanFull()
+                    ->description('The tenant\'s public-facing identity and contact details.')
+                    ->schema([
+                        TextInput::make('name')->label('Business name')->required()->maxLength(255),
+                        TextInput::make('address')->label('Business address')->maxLength(255)->columnSpanFull(),
+                        TextInput::make('phone_number')->tel()->maxLength(255)
+                            ->rules(fn (?Tenant $record): array => [
+                                Rule::unique('tenants', 'phone_number')->ignore($record?->getKey()),
+                            ]),
+                        TextInput::make('mobile_number')->tel()->maxLength(255)
+                            ->rules(fn (?Tenant $record): array => [
+                                Rule::unique('tenants', 'mobile_number')->ignore($record?->getKey()),
+                            ]),
+                        Select::make('timezone')->searchable()
+                            ->options(array_combine(DateTimeZone::listIdentifiers(), DateTimeZone::listIdentifiers()))
+                            ->required()->default('UTC'),
+                    ])
+                    ->columns(2),
+                Section::make('Branding')
+                    ->columnSpanFull()
+                    ->description('Controls how the tenant panel looks once this tenant\'s staff log in. Only a platform admin can set this — it does not appear in the tenant panel itself.')
+                    ->schema([
+                        ColorPicker::make('primary_color')->label('Primary color')
+                            ->helperText('Drives buttons, links, and active navigation in the tenant panel.'),
+                        ColorPicker::make('secondary_color')->label('Secondary color')
+                            ->helperText('Available as an accent color for the tenant panel.'),
+                        FileUpload::make('logo')
+                            ->image()
+                            ->disk('public')
+                            ->directory('tenant-logos')
+                            ->visibility('public')
+                            ->imagePreviewHeight('120')
+                            ->maxSize(2048)
+                            ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'])
+                            ->columnSpanFull(),
+                    ])
+                    ->columns(2),
+                Section::make('Billing details')
+                    ->columnSpanFull()
+                    ->description('Where invoices and billing correspondence for this tenant are sent.')
+                    ->schema([
+                        TextInput::make('billing_email')->label('Billing email')->email()->maxLength(255)
+                            ->rules(fn (?Tenant $record): array => [
+                                Rule::unique('tenants', 'billing_email')->ignore($record?->getKey()),
+                            ]),
+                        Select::make('currency')->searchable()->options(self::currencyOptions())->required()->default('USD'),
+                    ])
+                    ->columns(2),
+                Section::make('Owner account')
+                    ->columnSpanFull()
+                    ->description('The first staff account for this tenant, created with the "Tenant Owner" role.')
+                    ->schema([
+                        TextInput::make('owner_name')->label('Owner name')->required()->maxLength(255),
+                        TextInput::make('owner_email')->label('Owner email')->email()->required()->maxLength(255)
+                            ->rules([Rule::unique('tenant_users', 'email')]),
+                        TextInput::make('owner_password')->label('Owner password')->password()->revealable()->required()
+                            ->rules([Password::min(8)->mixedCase()->numbers()->symbols()])
+                            ->helperText('At least 8 characters, including an uppercase letter, a lowercase letter, a number, and a symbol.'),
+                    ])
+                    ->columns(2)
+                    ->visibleOn('create'),
+                Section::make('Subscription')
+                    ->columnSpanFull()
+                    ->schema([
+                        Select::make('plan_id')->label('Subscription plan')
+                            ->options(fn (): array => SubscriptionPlan::query()->where('is_active', true)->pluck('name', 'id')->all())
+                            ->searchable()
+                            ->required()
+                            ->default(fn (?Tenant $record): ?int => $record?->activeSubscription?->plan_id),
+                        DateTimePicker::make('trial_ends_at')->label('Trial ends at')
+                            ->minDate(now())
+                            ->helperText('Must be a future date and time.'),
+                    ])
+                    ->columns(2),
+            ]);
     }
 
     public static function getEloquentQuery(): Builder
@@ -150,6 +158,13 @@ class TenantResource extends Resource
                         default => 'warning',
                     }),
                 TextColumn::make('activeSubscription.plan.name')->label('Plan')->badge()->color('info')->placeholder('—'),
+                TextColumn::make('activeSubscription.status')->label('Subscription')->badge()->placeholder('—')
+                    ->color(fn (?string $state): string => match ($state) {
+                        'active' => 'success',
+                        'past_due' => 'danger',
+                        'cancelled' => 'gray',
+                        default => 'warning',
+                    }),
                 TextColumn::make('trial_ends_at')->label('Trial ends')->date('M j, Y')->sortable()->placeholder('—')
                     ->color(fn (?Carbon $state): ?string => $state?->isPast() ? 'danger' : null),
                 TextColumn::make('billing_email')->label('Billing email')->icon('heroicon-m-envelope')->toggleable(isToggledHiddenByDefault: true),
@@ -185,6 +200,13 @@ class TenantResource extends Resource
                     ->size('sm')
                     ->tooltip('Actions'),
             ]);
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            TenantResource\RelationManagers\InvoicesRelationManager::class,
+        ];
     }
 
     public static function getPages(): array

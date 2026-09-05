@@ -2,6 +2,7 @@
 
 namespace App\Filament\Tenant\Resources\LeadResource\Pages;
 
+use App\Filament\Concerns\HasFullWidthForm;
 use App\Filament\Tenant\Resources\LeadResource;
 use App\Models\Customer;
 use App\Models\FixedDeparture;
@@ -15,6 +16,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditLead extends EditRecord
 {
+    use HasFullWidthForm;
+
     protected static string $resource = LeadResource::class;
 
     protected function getRedirectUrl(): string
