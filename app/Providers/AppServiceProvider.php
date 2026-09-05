@@ -17,6 +17,7 @@ use App\Models\Package;
 use App\Models\Service;
 use App\Models\ServiceAvailability;
 use App\Models\SuperAdmin;
+use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Policies\BookingAddonPolicy;
 use App\Policies\BookingDocumentPolicy;
@@ -28,6 +29,7 @@ use App\Policies\LeadPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\SuperAdminPolicy;
 use App\Policies\TenantCatalogPolicy;
+use App\Policies\TenantPolicy;
 use App\Policies\TenantUserPolicy;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\Auth;
@@ -52,6 +54,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Gate::policy(TenantUser::class, TenantUserPolicy::class);
         Gate::policy(SuperAdmin::class, SuperAdminPolicy::class);
+        Gate::policy(Tenant::class, TenantPolicy::class);
         Gate::policy(Customer::class, CustomerPolicy::class);
         Gate::policy(Lead::class, LeadPolicy::class);
         Gate::policy(Booking::class, BookingPolicy::class);

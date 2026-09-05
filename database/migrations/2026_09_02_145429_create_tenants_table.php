@@ -22,7 +22,11 @@ return new class extends Migration
             $table->string('billing_email')->nullable();
             $table->string('timezone')->default('UTC');
             $table->string('currency', 3)->default('USD');
+            $table->string('logo')->nullable();
+            $table->string('brand_color', 7)->nullable();
+            $table->timestamp('trial_ends_at')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 

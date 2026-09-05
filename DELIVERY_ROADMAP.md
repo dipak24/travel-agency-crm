@@ -35,23 +35,32 @@ in as each phase starts.
 2. **Phase 2 — Role & Permission System.** Spatie permissions in tenant-team
    mode across all three guards; tenant admins can define custom sub-roles
    (Sales, Accountant, Ops) scoped to their own tenant. **Completed** —
-   `RolePolicy`, tenant `Role` resource, and role-scoping tests exist.
+   `RolePolicy` (now shared across the `tenant` and `super_admin` guards, scoped
+   by `guard_name`/`team_id`), tenant `Role` resource, an admin-panel `Role`
+   resource for platform-level roles (Super Admin can now create custom
+   platform roles like Support/Billing, not just assign the single seeded
+   `Super Admin` role), and role-scoping tests for both guards exist.
 
 3. **Phase 3 — Tenant Management.** Tenant model, `tenant_id` global scope,
-   onboarding flow, tenant-isolation tests. **Partial.**
-   - Done: the scoping/isolation mechanics themselves — this is the one piece
-     every later phase actually depends on, and it's tested
-     (`TenantIsolationTest`).
-   - Remaining: Super Admin-facing Tenant CRUD (create/edit/suspend tenant,
-     assign a `subscription_plans` row, set a trial period) — the `tenants` rows
-     in use today were seeded directly, not created through any UI. Also a
-     tenant-facing settings page for the currency/timezone/branding fields that
-     already exist as columns on `tenants` but have no form.
-   - Note: this was never a _blocking_ dependency for Phases 4–7 below — they
-     were built and tenant-isolation-tested against seeded tenants with no
-     Tenant CRUD screen in existence. It's a real operational gap (no way to
-     onboard a real customer-tenant today) but not one that was silently skipped
-     by mistake.
+   onboarding flow, tenant-isolation tests. **Completed.**
+   - Done: the scoping/isolation mechanics themselves, tested
+     (`TenantIsolationTest`); Super Admin-facing Tenant CRUD
+     (`app/Filament/Resources/TenantResource`) — create (with an owner account
+     and a subscription plan in one step, via the existing `TenantOnboarding`
+     service), list, edit, suspend/reactivate, soft-delete/restore, reassign
+     subscription plan, set trial period (`trial_ends_at`), gated by a new
+     `manage tenants` platform permission (`TenantPolicy`); a tenant-facing
+     Settings page (`app/Filament/Tenant/Pages/Settings`) for the
+     currency/timezone/branding/contact fields that already existed as columns
+     on `tenants` but had no form, gated by a new `manage settings` tenant
+     permission (Tenant Owner by default). Covered by
+     `AdminTenantManagementTest` and `TenantSettingsTest`.
+   - Deferred: Impersonate tenant admin (+ start/end audit log + UI banner) —
+     this needs its own guard-switching mechanism and depends on the Phase 12
+     audit log work, which doesn't exist yet. It was only ever in the
+     exhaustive granular checklist below, not this phase's "Remaining" scope,
+     so it's tracked there as a standalone open item rather than blocking this
+     phase.
 
 4. **Phase 4 — Tenant Admin Panel.** Tenant-side staff management and tenant
    dashboard shell. **Completed** — `Staff` resource, tenant `Role` resource,
@@ -174,17 +183,17 @@ it as a to-check/to-build item either way.
 
 ### Admin Panel (`/admin`, guard: `super_admin`)
 
-**Tenant Management**
+**Tenant Management** — built (impersonation deferred, see Phase 3 note above)
 
-- [ ] Create tenant
-- [ ] List tenants
-- [ ] View tenant detail
-- [ ] Edit tenant
-- [ ] Suspend / reactivate tenant
-- [ ] Assign subscription plan
-- [ ] Set trial period
+- [x] Create tenant
+- [x] List tenants
+- [x] View tenant detail
+- [x] Edit tenant
+- [x] Suspend / reactivate tenant
+- [x] Assign subscription plan
+- [x] Set trial period
 - [ ] Impersonate tenant admin (+ start/end audit log + UI banner)
-- [ ] Delete (soft-delete) tenant
+- [x] Delete (soft-delete) tenant
 
 **Super Admin User Management** — built
 
@@ -192,17 +201,20 @@ it as a to-check/to-build item either way.
 - [x] List
 - [x] View
 - [x] Edit
-- [x] Assign role (mechanism is in place; only the single `Super Admin` role
-      exists today — no Support/Billing roles have been created, that's
-      "Role Management (super_admin guard)" below)
+- [x] Assign role (custom platform roles can now be created via
+      "Role Management (super_admin guard)" below; only the single seeded
+      `Super Admin` role has actually been created so far — no Support/Billing
+      role rows exist yet, that's a data/seeding decision, not a missing
+      feature)
 - [x] Deactivate / delete
 
-**Role Management (super_admin guard)**
+**Role Management (super_admin guard)** — built
 
-- [ ] Create role
-- [ ] List roles
-- [ ] Edit role permissions
-- [ ] Delete role
+- [x] Create role
+- [x] List roles
+- [x] Edit role permissions
+- [x] Delete role (mechanism is in place via `RolePolicy`; no UI delete action is
+      wired up on the table yet, matching the tenant `RoleResource` convention)
 
 **Plans & Subscriptions**
 

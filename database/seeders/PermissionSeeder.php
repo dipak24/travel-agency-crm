@@ -32,6 +32,11 @@ class PermissionSeeder extends Seeder
     {
         $permissions = $this->permissions([
             'manage platform',
+            'manage tenants',
+            'view roles',
+            'create roles',
+            'update roles',
+            'delete roles',
         ], 'super_admin');
 
         // Super admins aren't tenant-scoped, so platform roles use the fixed
@@ -75,6 +80,7 @@ class PermissionSeeder extends Seeder
             'create catalog',
             'update catalog',
             'delete catalog',
+            'manage settings',
         ], 'tenant');
         $portalPermission = $this->permissions(['access portal'], 'customer');
 

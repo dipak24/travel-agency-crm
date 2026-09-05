@@ -13,7 +13,7 @@ use Spatie\Permission\Models\Role;
 class TenantOnboarding
 {
     /**
-     * @param  array{name: string, slug: string, billing_email?: ?string, timezone?: string, currency?: string}  $tenantData
+     * @param  array{name: string, slug: string, billing_email?: ?string, timezone?: string, currency?: string, logo?: ?string, brand_color?: ?string}  $tenantData
      * @param  array{name: string, email: string, password: string}  $ownerData
      */
     public function create(array $tenantData, array $ownerData, SubscriptionPlan $plan): Tenant

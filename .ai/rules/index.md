@@ -8,3 +8,5 @@ Before planning or editing, find the row whose globs match the file's path and r
 | phpunit.xml,docker-compose.yml | .ai/rules/general.md |
 | app/Policies/**,database/seeders/**,app/Http/Middleware/** | .ai/rules/middleware.md |
 | database/migrations/** | .ai/rules/migrations.md |
+| app/Models/**,app/Filament/Resources/** | .ai/rules/resources.md |
+| app/Models/**,app/Filament/Resources/** | .ai/rules/resources.md |
