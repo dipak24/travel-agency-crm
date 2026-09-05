@@ -27,6 +27,7 @@ return new class extends Migration
             $table->rememberToken();
             $table->timestamps();
             $table->unique(['tenant_id', 'email']);
+            $table->unique(['tenant_id', 'phone']);
         });
     }
 

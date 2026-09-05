@@ -59,16 +59,30 @@ class TenantResource extends Resource
                 ])
                 ->columns(2),
             Section::make('Business details')
-                ->description('The tenant\'s public-facing identity: name, contact details, and branding.')
+                ->description('The tenant\'s public-facing identity and contact details.')
                 ->schema([
                     TextInput::make('name')->label('Business name')->required()->maxLength(255),
                     TextInput::make('address')->label('Business address')->maxLength(255)->columnSpanFull(),
-                    TextInput::make('phone_number')->tel()->maxLength(255),
-                    TextInput::make('mobile_number')->tel()->maxLength(255),
+                    TextInput::make('phone_number')->tel()->maxLength(255)
+                        ->rules(fn (?Tenant $record): array => [
+                            Rule::unique('tenants', 'phone_number')->ignore($record?->getKey()),
+                        ]),
+                    TextInput::make('mobile_number')->tel()->maxLength(255)
+                        ->rules(fn (?Tenant $record): array => [
+                            Rule::unique('tenants', 'mobile_number')->ignore($record?->getKey()),
+                        ]),
                     Select::make('timezone')->searchable()
                         ->options(array_combine(DateTimeZone::listIdentifiers(), DateTimeZone::listIdentifiers()))
                         ->required()->default('UTC'),
-                    ColorPicker::make('brand_color')->label('Brand color'),
+                ])
+                ->columns(2),
+            Section::make('Branding')
+                ->description('Controls how the tenant panel looks once this tenant\'s staff log in. Only a platform admin can set this — it does not appear in the tenant panel itself.')
+                ->schema([
+                    ColorPicker::make('primary_color')->label('Primary color')
+                        ->helperText('Drives buttons, links, and active navigation in the tenant panel.'),
+                    ColorPicker::make('secondary_color')->label('Secondary color')
+                        ->helperText('Available as an accent color for the tenant panel.'),
                     FileUpload::make('logo')
                         ->image()
                         ->disk('public')
@@ -83,7 +97,10 @@ class TenantResource extends Resource
             Section::make('Billing details')
                 ->description('Where invoices and billing correspondence for this tenant are sent.')
                 ->schema([
-                    TextInput::make('billing_email')->label('Billing email')->email()->maxLength(255),
+                    TextInput::make('billing_email')->label('Billing email')->email()->maxLength(255)
+                        ->rules(fn (?Tenant $record): array => [
+                            Rule::unique('tenants', 'billing_email')->ignore($record?->getKey()),
+                        ]),
                     Select::make('currency')->searchable()->options(self::currencyOptions())->required()->default('USD'),
                 ])
                 ->columns(2),
@@ -91,7 +108,8 @@ class TenantResource extends Resource
                 ->description('The first staff account for this tenant, created with the "Tenant Owner" role.')
                 ->schema([
                     TextInput::make('owner_name')->label('Owner name')->required()->maxLength(255),
-                    TextInput::make('owner_email')->label('Owner email')->email()->required()->maxLength(255),
+                    TextInput::make('owner_email')->label('Owner email')->email()->required()->maxLength(255)
+                        ->rules([Rule::unique('tenant_users', 'email')]),
                     TextInput::make('owner_password')->label('Owner password')->password()->revealable()->required()
                         ->rules([Password::min(8)->mixedCase()->numbers()->symbols()])
                         ->helperText('At least 8 characters, including an uppercase letter, a lowercase letter, a number, and a symbol.'),
@@ -105,7 +123,9 @@ class TenantResource extends Resource
                         ->searchable()
                         ->required()
                         ->default(fn (?Tenant $record): ?int => $record?->activeSubscription?->plan_id),
-                    DateTimePicker::make('trial_ends_at')->label('Trial ends at'),
+                    DateTimePicker::make('trial_ends_at')->label('Trial ends at')
+                        ->minDate(now())
+                        ->helperText('Must be a future date and time.'),
                 ])
                 ->columns(2),
         ]);

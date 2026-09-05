@@ -7,7 +7,6 @@ use App\Support\TenantContext;
 use BackedEnum;
 use DateTimeZone;
 use Filament\Actions\Action;
-use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -42,7 +41,7 @@ class Settings extends Page
         $this->tenant = auth('tenant')->user()->tenant;
 
         $this->form->fill($this->tenant->only([
-            'name', 'address', 'phone_number', 'mobile_number', 'timezone', 'logo', 'brand_color',
+            'name', 'address', 'phone_number', 'mobile_number', 'timezone', 'logo',
             'billing_email', 'currency',
         ]));
     }
@@ -68,17 +67,16 @@ class Settings extends Page
     {
         return $schema->components([
             Section::make('Business details')
-                ->description('Your public-facing identity: name, contact details, and branding.')
+                ->description('Managed by the platform team — contact support to update your business name, contact details, or branding.')
                 ->schema([
-                    TextInput::make('name')->label('Business name')->required()->maxLength(255),
-                    TextInput::make('address')->label('Business address')->maxLength(255)->columnSpanFull(),
-                    TextInput::make('phone_number')->tel()->maxLength(255),
-                    TextInput::make('mobile_number')->tel()->maxLength(255),
-                    Select::make('timezone')->searchable()
-                        ->options(array_combine(DateTimeZone::listIdentifiers(), DateTimeZone::listIdentifiers()))
-                        ->required(),
-                    ColorPicker::make('brand_color')->label('Brand color'),
+                    TextInput::make('name')->label('Business name')->disabled()->maxLength(255),
+                    TextInput::make('address')->label('Business address')->disabled()->maxLength(255)->columnSpanFull(),
+                    TextInput::make('phone_number')->tel()->disabled()->maxLength(255),
+                    TextInput::make('mobile_number')->tel()->disabled()->maxLength(255),
+                    Select::make('timezone')->disabled()->searchable()
+                        ->options(array_combine(DateTimeZone::listIdentifiers(), DateTimeZone::listIdentifiers())),
                     FileUpload::make('logo')
+                        ->disabled()
                         ->image()
                         ->disk('public')
                         ->directory('tenant-logos')

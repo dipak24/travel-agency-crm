@@ -5,10 +5,10 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -40,7 +40,9 @@ class Customer extends Authenticatable implements FilamentUser
 
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->password !== null && $panel->getId() === 'portal';
+        return $this->password !== null
+            && $panel->getId() === 'portal'
+            && $this->tenant?->status !== 'suspended';
     }
 
     protected function casts(): array

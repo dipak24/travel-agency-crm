@@ -63,7 +63,8 @@ test('a platform admin can create a tenant with an owner and a subscription plan
         'billing_email' => 'billing@new-travel.test',
         'timezone' => 'UTC',
         'currency' => 'USD',
-        'brand_color' => '#ff5500',
+        'primary_color' => '#ff5500',
+        'secondary_color' => '#0055ff',
         'owner_name' => 'Agency Owner',
         'owner_email' => 'owner@new-travel.test',
         'owner_password' => 'Sup3rSecret!',
@@ -74,7 +75,8 @@ test('a platform admin can create a tenant with an owner and a subscription plan
 
     $tenant = Tenant::query()->where('slug', 'new-travel-agency')->firstOrFail();
 
-    expect($tenant->brand_color)->toBe('#ff5500');
+    expect($tenant->primary_color)->toBe('#ff5500')
+        ->and($tenant->secondary_color)->toBe('#0055ff');
 
     $owner = TenantUser::query()->withoutGlobalScopes()
         ->where('tenant_id', $tenant->getKey())
@@ -89,6 +91,101 @@ test('a platform admin can create a tenant with an owner and a subscription plan
         ->where('tenant_id', $tenant->getKey())
         ->where('plan_id', $plan->getKey())
         ->exists())->toBeTrue();
+});
+
+test('creating a tenant rejects an owner email already used by staff in another tenant', function () {
+    $this->seed();
+
+    $admin = SuperAdmin::query()->where('email', 'admin@example.com')->firstOrFail();
+    $plan = SubscriptionPlan::query()->create(['name' => 'Growth']);
+
+    // Staff sign in from one shared login page, so email must be unique
+    // platform-wide — not just within a single tenant.
+    $existingTenant = Tenant::factory()->create();
+    app(TenantContext::class)->set($existingTenant);
+    TenantUser::query()->create([
+        'name' => 'Existing Staffer',
+        'email' => 'shared@example.test',
+        'password' => 'password',
+    ]);
+    app(TenantContext::class)->clear();
+
+    $test = Livewire::actingAs($admin, 'super_admin')->test(CreateTenant::class);
+
+    fillTenantForm($test, [
+        'name' => 'Another Travel Agency',
+        'slug' => 'another-travel-agency',
+        'status' => 'trial',
+        'timezone' => 'UTC',
+        'currency' => 'USD',
+        'owner_name' => 'Agency Owner',
+        'owner_email' => 'shared@example.test',
+        'owner_password' => 'Sup3rSecret!',
+        'plan_id' => $plan->getKey(),
+    ])
+        ->call('create')
+        ->assertHasFormErrors(['owner_email' => 'unique']);
+
+    expect(Tenant::query()->where('slug', 'another-travel-agency')->exists())->toBeFalse();
+});
+
+test('creating a tenant rejects billing email, phone, or mobile number already used by another tenant', function () {
+    $this->seed();
+
+    $admin = SuperAdmin::query()->where('email', 'admin@example.com')->firstOrFail();
+    $plan = SubscriptionPlan::query()->create(['name' => 'Growth']);
+    $existingTenant = Tenant::factory()->create([
+        'billing_email' => 'shared-billing@example.test',
+        'phone_number' => '+1-555-0100',
+        'mobile_number' => '+1-555-0101',
+    ]);
+
+    $test = Livewire::actingAs($admin, 'super_admin')->test(CreateTenant::class);
+
+    fillTenantForm($test, [
+        'name' => 'Duplicate Details Agency',
+        'slug' => 'duplicate-details-agency',
+        'status' => 'trial',
+        'billing_email' => $existingTenant->billing_email,
+        'phone_number' => $existingTenant->phone_number,
+        'mobile_number' => $existingTenant->mobile_number,
+        'timezone' => 'UTC',
+        'currency' => 'USD',
+        'owner_name' => 'Agency Owner',
+        'owner_email' => 'owner@duplicate-details.test',
+        'owner_password' => 'Sup3rSecret!',
+        'plan_id' => $plan->getKey(),
+    ])
+        ->call('create')
+        ->assertHasFormErrors(['billing_email' => 'unique', 'phone_number' => 'unique', 'mobile_number' => 'unique']);
+
+    expect(Tenant::query()->where('slug', 'duplicate-details-agency')->exists())->toBeFalse();
+});
+
+test('creating a tenant rejects a trial end date in the past', function () {
+    $this->seed();
+
+    $admin = SuperAdmin::query()->where('email', 'admin@example.com')->firstOrFail();
+    $plan = SubscriptionPlan::query()->create(['name' => 'Growth']);
+
+    $test = Livewire::actingAs($admin, 'super_admin')->test(CreateTenant::class);
+
+    fillTenantForm($test, [
+        'name' => 'Past Trial Agency',
+        'slug' => 'past-trial-agency',
+        'status' => 'trial',
+        'timezone' => 'UTC',
+        'currency' => 'USD',
+        'trial_ends_at' => now()->subDay(),
+        'owner_name' => 'Agency Owner',
+        'owner_email' => 'owner@past-trial.test',
+        'owner_password' => 'Sup3rSecret!',
+        'plan_id' => $plan->getKey(),
+    ])
+        ->call('create')
+        ->assertHasFormErrors(['trial_ends_at']);
+
+    expect(Tenant::query()->where('slug', 'past-trial-agency')->exists())->toBeFalse();
 });
 
 test('a platform admin can edit a tenant and reassign its subscription plan', function () {

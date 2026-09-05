@@ -10,7 +10,7 @@ use Spatie\Permission\Models\Role;
 
 uses(RefreshDatabase::class);
 
-test('a tenant owner can access and save the settings page', function () {
+test('a tenant owner can access the settings page and save billing details', function () {
     $this->seed();
 
     $owner = TenantUser::query()->withoutGlobalScopes()->where('email', 'staff@example.com')->firstOrFail();
@@ -20,20 +20,44 @@ test('a tenant owner can access and save the settings page', function () {
 
     $test = Livewire::actingAs($owner, 'tenant')->test(Settings::class);
 
-    $test->set('data.name', 'Renamed Demo Agency')
-        ->set('data.timezone', 'Asia/Kathmandu')
-        ->set('data.currency', 'NPR')
+    $test->set('data.currency', 'NPR')
         ->set('data.billing_email', 'new-billing@example.com')
-        ->set('data.brand_color', '#112233')
         ->call('save');
 
     $tenant = Tenant::query()->where('slug', 'demo-travel')->firstOrFail();
 
-    expect($tenant->name)->toBe('Renamed Demo Agency')
-        ->and($tenant->timezone)->toBe('Asia/Kathmandu')
-        ->and($tenant->currency)->toBe('NPR')
-        ->and($tenant->billing_email)->toBe('new-billing@example.com')
-        ->and($tenant->brand_color)->toBe('#112233');
+    expect($tenant->currency)->toBe('NPR')
+        ->and($tenant->billing_email)->toBe('new-billing@example.com');
+});
+
+test('business details fields are disabled and cannot be changed from the settings page', function () {
+    $this->seed();
+
+    $owner = TenantUser::query()->withoutGlobalScopes()->where('email', 'staff@example.com')->firstOrFail();
+    $originalName = Tenant::query()->where('slug', 'demo-travel')->value('name');
+
+    $test = Livewire::actingAs($owner, 'tenant')->test(Settings::class);
+
+    // Even if a client bypassed the disabled state in the browser, the
+    // server must not persist changes to fields disabled on the backend.
+    $test->set('data.name', 'Hacked Agency Name')
+        ->set('data.timezone', 'Asia/Kathmandu')
+        ->call('save');
+
+    $tenant = Tenant::query()->where('slug', 'demo-travel')->firstOrFail();
+
+    expect($tenant->name)->toBe($originalName)
+        ->and($tenant->timezone)->toBe('UTC');
+});
+
+test('the settings page does not expose branding color fields', function () {
+    $this->seed();
+
+    $owner = TenantUser::query()->withoutGlobalScopes()->where('email', 'staff@example.com')->firstOrFail();
+
+    Livewire::actingAs($owner, 'tenant')->test(Settings::class)
+        ->assertDontSee('Primary color')
+        ->assertDontSee('Secondary color');
 });
 
 test('a tenant staff member without the manage settings permission is denied access', function () {

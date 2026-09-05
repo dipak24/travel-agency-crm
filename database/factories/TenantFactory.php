@@ -24,7 +24,7 @@ class TenantFactory extends Factory
             'name' => $name,
             'slug' => Str::slug($name).'-'.fake()->unique()->numberBetween(1000, 9999),
             'status' => 'trial',
-            'billing_email' => fake()->companyEmail(),
+            'billing_email' => fake()->unique()->companyEmail(),
             'timezone' => 'UTC',
             'currency' => 'USD',
             'trial_ends_at' => now()->addDays(14),

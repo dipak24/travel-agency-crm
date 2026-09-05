@@ -17,13 +17,14 @@ return new class extends Migration
             $table->string('slug')->unique();
             $table->string('status')->default('trial');
             $table->string('address')->nullable();
-            $table->string('phone_number')->nullable();
-            $table->string('mobile_number')->nullable();
-            $table->string('billing_email')->nullable();
+            $table->string('phone_number')->nullable()->unique();
+            $table->string('mobile_number')->nullable()->unique();
+            $table->string('billing_email')->nullable()->unique();
             $table->string('timezone')->default('UTC');
             $table->string('currency', 3)->default('USD');
             $table->string('logo')->nullable();
-            $table->string('brand_color', 7)->nullable();
+            $table->string('primary_color', 7)->nullable();
+            $table->string('secondary_color', 7)->nullable();
             $table->timestamp('trial_ends_at')->nullable();
             $table->timestamps();
             $table->softDeletes();

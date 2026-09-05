@@ -16,7 +16,7 @@ class Tenant extends Model
 
     protected $fillable = [
         'name', 'slug', 'status', 'address', 'phone_number', 'mobile_number',
-        'billing_email', 'timezone', 'currency', 'logo', 'brand_color', 'trial_ends_at',
+        'billing_email', 'timezone', 'currency', 'logo', 'primary_color', 'secondary_color', 'trial_ends_at',
     ];
 
     protected function casts(): array

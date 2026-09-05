@@ -29,6 +29,10 @@ class RolePolicy
 
     public function update(TenantUser|SuperAdmin $user, Role $role): Response
     {
+        if ($this->isProtected($role)) {
+            return Response::deny('The tenant owner role is set by the platform admin and can\'t be changed from the tenant portal.');
+        }
+
         return $this->sameScope($user, $role) && $this->hasPermission($user, 'update roles')
             ? Response::allow()
             : Response::deny($user instanceof SuperAdmin
@@ -38,6 +42,10 @@ class RolePolicy
 
     public function delete(TenantUser|SuperAdmin $user, Role $role): bool
     {
+        if ($this->isProtected($role)) {
+            return false;
+        }
+
         return $this->sameScope($user, $role) && $this->hasPermission($user, 'delete roles');
     }
 
@@ -48,6 +56,17 @@ class RolePolicy
         }
 
         return $role->guard_name === 'tenant' && $role->team_id === $user->tenant_id;
+    }
+
+    /**
+     * The tenant owner role is the tenant portal's "super admin" — its own
+     * permission set is provisioned once when the tenant is created and must
+     * stay outside the reach of anyone logged into that tenant's portal,
+     * including the owner themselves.
+     */
+    private function isProtected(Role $role): bool
+    {
+        return $role->guard_name === 'tenant' && $role->name === 'Tenant Owner';
     }
 
     private function hasPermission(TenantUser|SuperAdmin $user, string $permission): bool

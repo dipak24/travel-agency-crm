@@ -1,13 +1,36 @@
 <?php
 
+use App\Filament\Tenant\Resources\BookingResource\Pages\EditBooking;
+use App\Filament\Tenant\Resources\BookingTravelerResource\Pages\CreateBookingTraveler;
+use App\Filament\Tenant\Resources\BookingTravelerResource\Pages\EditBookingTraveler;
+use App\Filament\Tenant\Resources\CustomerResource\Pages\CreateCustomer;
+use App\Filament\Tenant\Resources\CustomerResource\Pages\EditCustomer;
+use App\Filament\Tenant\Resources\FixedDepartureResource\Pages\CreateFixedDeparture;
+use App\Filament\Tenant\Resources\FixedDepartureResource\Pages\EditFixedDeparture;
+use App\Filament\Tenant\Resources\GroupDiscountTierResource\Pages\CreateGroupDiscountTier;
+use App\Filament\Tenant\Resources\GroupDiscountTierResource\Pages\EditGroupDiscountTier;
+use App\Filament\Tenant\Resources\IncludeExcludeResource\Pages\CreateIncludeExclude;
+use App\Filament\Tenant\Resources\IncludeExcludeResource\Pages\EditIncludeExclude;
+use App\Filament\Tenant\Resources\LeadResource\Pages\CreateLead;
+use App\Filament\Tenant\Resources\LeadResource\Pages\EditLead;
+use App\Filament\Tenant\Resources\PackageResource\Pages\CreatePackage;
+use App\Filament\Tenant\Resources\PackageResource\Pages\EditPackage;
+use App\Filament\Tenant\Resources\RoleResource\Pages\CreateRole;
+use App\Filament\Tenant\Resources\RoleResource\Pages\EditRole;
+use App\Filament\Tenant\Resources\ServiceAvailabilityResource\Pages\CreateServiceAvailability;
+use App\Filament\Tenant\Resources\ServiceAvailabilityResource\Pages\EditServiceAvailability;
+use App\Filament\Tenant\Resources\ServiceResource\Pages\CreateService;
+use App\Filament\Tenant\Resources\ServiceResource\Pages\EditService;
+use App\Filament\Tenant\Resources\StaffResource\Pages\CreateStaff;
+use App\Filament\Tenant\Resources\StaffResource\Pages\EditStaff;
 use App\Models\Customer;
+use App\Models\Service;
 use App\Models\SuperAdmin;
 use App\Models\TenantUser;
-use App\Models\Service;
 use App\Support\TenantContext;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Contracts\Auth\Access\Authorizable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Gate;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -22,6 +45,23 @@ test('seeded tenant staff can authenticate with the documented credentials', fun
     ]))->toBeTrue()
         ->and(auth('tenant')->user())->toBeInstanceOf(TenantUser::class)
         ->and(auth('tenant')->user())->toBeInstanceOf(Authorizable::class);
+});
+
+test('staff of a suspended tenant cannot access the tenant panel even with an active account', function () {
+    $this->seed();
+
+    $staff = TenantUser::query()->withoutGlobalScopes()
+        ->where('email', 'staff@example.com')
+        ->firstOrFail();
+
+    expect($staff->canAccessPanel(filament()->getPanel('tenant')))->toBeTrue();
+
+    $staff->tenant->update(['status' => 'suspended']);
+    $staff->refresh();
+
+    expect($staff->canAccessPanel(filament()->getPanel('tenant')))->toBeFalse();
+
+    $this->actingAs($staff, 'tenant')->get('/tenant')->assertForbidden();
 });
 
 test('seeded admin and portal accounts can authenticate with their documented credentials', function () {
@@ -131,17 +171,17 @@ test('tenant-owned catalog create pages resolve the authenticated tenant', funct
 
 test('tenant create pages redirect to their resource lists after saving', function () {
     $createPages = [
-        \App\Filament\Tenant\Resources\BookingTravelerResource\Pages\CreateBookingTraveler::class,
-        \App\Filament\Tenant\Resources\CustomerResource\Pages\CreateCustomer::class,
-        \App\Filament\Tenant\Resources\FixedDepartureResource\Pages\CreateFixedDeparture::class,
-        \App\Filament\Tenant\Resources\GroupDiscountTierResource\Pages\CreateGroupDiscountTier::class,
-        \App\Filament\Tenant\Resources\IncludeExcludeResource\Pages\CreateIncludeExclude::class,
-        \App\Filament\Tenant\Resources\LeadResource\Pages\CreateLead::class,
-        \App\Filament\Tenant\Resources\PackageResource\Pages\CreatePackage::class,
-        \App\Filament\Tenant\Resources\RoleResource\Pages\CreateRole::class,
-        \App\Filament\Tenant\Resources\ServiceAvailabilityResource\Pages\CreateServiceAvailability::class,
-        \App\Filament\Tenant\Resources\ServiceResource\Pages\CreateService::class,
-        \App\Filament\Tenant\Resources\StaffResource\Pages\CreateStaff::class,
+        CreateBookingTraveler::class,
+        CreateCustomer::class,
+        CreateFixedDeparture::class,
+        CreateGroupDiscountTier::class,
+        CreateIncludeExclude::class,
+        CreateLead::class,
+        CreatePackage::class,
+        CreateRole::class,
+        CreateServiceAvailability::class,
+        CreateService::class,
+        CreateStaff::class,
     ];
 
     foreach ($createPages as $createPage) {
@@ -154,18 +194,18 @@ test('tenant create pages redirect to their resource lists after saving', functi
 
 test('tenant edit pages redirect to their resource lists after saving', function () {
     $editPages = [
-        \App\Filament\Tenant\Resources\BookingResource\Pages\EditBooking::class,
-        \App\Filament\Tenant\Resources\BookingTravelerResource\Pages\EditBookingTraveler::class,
-        \App\Filament\Tenant\Resources\CustomerResource\Pages\EditCustomer::class,
-        \App\Filament\Tenant\Resources\FixedDepartureResource\Pages\EditFixedDeparture::class,
-        \App\Filament\Tenant\Resources\GroupDiscountTierResource\Pages\EditGroupDiscountTier::class,
-        \App\Filament\Tenant\Resources\IncludeExcludeResource\Pages\EditIncludeExclude::class,
-        \App\Filament\Tenant\Resources\LeadResource\Pages\EditLead::class,
-        \App\Filament\Tenant\Resources\PackageResource\Pages\EditPackage::class,
-        \App\Filament\Tenant\Resources\RoleResource\Pages\EditRole::class,
-        \App\Filament\Tenant\Resources\ServiceAvailabilityResource\Pages\EditServiceAvailability::class,
-        \App\Filament\Tenant\Resources\ServiceResource\Pages\EditService::class,
-        \App\Filament\Tenant\Resources\StaffResource\Pages\EditStaff::class,
+        EditBooking::class,
+        EditBookingTraveler::class,
+        EditCustomer::class,
+        EditFixedDeparture::class,
+        EditGroupDiscountTier::class,
+        EditIncludeExclude::class,
+        EditLead::class,
+        EditPackage::class,
+        EditRole::class,
+        EditServiceAvailability::class,
+        EditService::class,
+        EditStaff::class,
     ];
 
     foreach ($editPages as $editPage) {

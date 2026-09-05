@@ -29,7 +29,8 @@ class CreateTenant extends CreateRecord
                 'timezone' => $data['timezone'],
                 'currency' => $data['currency'],
                 'logo' => $data['logo'] ?? null,
-                'brand_color' => $data['brand_color'] ?? null,
+                'primary_color' => $data['primary_color'] ?? null,
+                'secondary_color' => $data['secondary_color'] ?? null,
             ],
             [
                 'name' => $data['owner_name'],

@@ -7,8 +7,8 @@ use Database\Factories\TenantUserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -31,7 +31,9 @@ class TenantUser extends Authenticatable implements FilamentUser
 
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->status === 'active' && $panel->getId() === 'tenant';
+        return $this->status === 'active'
+            && $panel->getId() === 'tenant'
+            && $this->tenant?->status !== 'suspended';
     }
 
     protected function casts(): array

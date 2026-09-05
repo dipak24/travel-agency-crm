@@ -25,7 +25,8 @@ return new class extends Migration
             $table->date('joining_date')->nullable();
             $table->rememberToken();
             $table->timestamps();
-            $table->unique(['tenant_id', 'email']);
+            $table->unique('email');
+            $table->index('tenant_id');
         });
     }
 
