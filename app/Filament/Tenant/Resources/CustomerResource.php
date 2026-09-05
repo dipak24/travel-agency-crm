@@ -10,6 +10,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Component;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -29,6 +30,24 @@ class CustomerResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
+            ...static::quickCreateSchema(),
+            TextInput::make('nationality')->maxLength(255),
+            TextInput::make('password')->password()->revealable()->label('Portal password'),
+            Textarea::make('address')->rows(3),
+            Textarea::make('notes')->rows(4),
+        ]);
+    }
+
+    /**
+     * Minimal customer fields for creating a walk-in/guest customer inline
+     * from another resource's form (e.g. a Select's createOptionForm on
+     * BookingResource/InvoiceResource), without leaving the page.
+     *
+     * @return array<int, Component>
+     */
+    public static function quickCreateSchema(): array
+    {
+        return [
             TextInput::make('name')->required()->maxLength(255),
             TextInput::make('email')->email()->required()->maxLength(255)
                 ->rules(fn (?Customer $record): array => [
@@ -47,11 +66,7 @@ class CustomerResource extends Resource
                 'agency' => 'Agency',
                 'group_leader' => 'Group leader',
             ])->required()->default('individual'),
-            TextInput::make('nationality')->maxLength(255),
-            TextInput::make('password')->password()->revealable()->label('Portal password'),
-            Textarea::make('address')->rows(3),
-            Textarea::make('notes')->rows(4),
-        ]);
+        ];
     }
 
     public static function table(Table $table): Table

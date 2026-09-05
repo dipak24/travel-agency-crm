@@ -1,5 +1,8 @@
 <?php
 
+use App\Filament\Tenant\Resources\InvoiceResource\Pages\CreateInvoice;
+use App\Filament\Tenant\Resources\InvoiceResource\Pages\ListInvoices;
+use App\Filament\Tenant\Resources\PaymentResource\Pages\CreatePayment;
 use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\Invoice;
@@ -10,8 +13,11 @@ use App\Policies\InvoicePolicy;
 use App\Policies\PaymentPolicy;
 use App\Support\TenantContext;
 use Database\Seeders\PermissionSeeder;
+use Filament\Actions\Testing\TestAction;
+use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -225,4 +231,154 @@ test('payment policy restricts access to same-tenant staff', function () {
 
     expect((new PaymentPolicy)->view($owner, $payment))->toBeTrue()
         ->and((new PaymentPolicy)->view($otherUser, $payment))->toBeFalse();
+});
+
+test('a tenant staff member can download an invoice as a PDF', function () {
+    $tenant = billingTenant('Northwind Travel', 'northwind-travel');
+    $this->seed();
+
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $owner->assignRole($ownerRole);
+
+    $customer = Customer::factory()->create();
+    $booking = Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Alpine Escape']);
+    $invoice = Invoice::query()->create([
+        'booking_id' => $booking->id,
+        'customer_id' => $customer->id,
+        'amount' => 150000,
+        'tax' => 12000,
+        'discount' => 5000,
+        'total' => 155000,
+        'currency' => 'USD',
+        'status' => 'issued',
+        'due_date' => now()->addDays(14)->toDateString(),
+    ]);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(ListInvoices::class)
+        ->callAction(TestAction::make('downloadPdf')->table($invoice))
+        ->assertFileDownloaded("{$invoice->invoice_no}.pdf");
+});
+
+test('a tenant staff member can create a new guest customer inline while invoicing a booking', function () {
+    $tenant = billingTenant('Northwind Travel', 'northwind-travel');
+    $this->seed();
+
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $owner->assignRole($ownerRole);
+
+    $existingCustomer = Customer::factory()->create();
+    $booking = Booking::query()->create(['customer_id' => $existingCustomer->id, 'trip_name' => 'Alpine Escape']);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(CreateInvoice::class)
+        ->set('data.booking_id', $booking->id)
+        ->mountAction(TestAction::make('createOption')->schemaComponent('customer_id'))
+        ->set('mountedActions.0.data.name', 'Walk-in Guest')
+        ->set('mountedActions.0.data.email', 'guest@example.test')
+        ->set('mountedActions.0.data.phone', '555-0100')
+        ->set('mountedActions.0.data.type', 'individual')
+        ->callMountedAction()
+        ->assertHasNoFormErrors();
+
+    $guest = Customer::query()->where('email', 'guest@example.test')->first();
+
+    expect($guest)->not->toBeNull()
+        ->and($guest->tenant_id)->toBe($tenant->id);
+});
+
+test('the invoice policy hides the guest quick-create button from staff who cannot create customers', function () {
+    $tenant = billingTenant('Northwind Travel', 'northwind-travel');
+    $this->seed();
+
+    app(TenantContext::class)->set($tenant);
+    $accountant = TenantUser::factory()->create();
+    $accountantRole = Role::query()->where('name', 'Accountant')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $accountant->assignRole($accountantRole);
+
+    $customer = Customer::factory()->create();
+    $booking = Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Alpine Escape']);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($accountant, 'tenant')->test(CreateInvoice::class)
+        ->set('data.booking_id', $booking->id)
+        ->assertActionHidden(TestAction::make('createOption')->schemaComponent('customer_id'));
+});
+
+test('a tenant owner can create an invoice from a booking and record a payment against it', function () {
+    $tenant = billingTenant('Northwind Travel', 'northwind-travel');
+    $this->seed();
+
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $owner->assignRole($ownerRole);
+
+    $customer = Customer::factory()->create();
+    $booking = Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Alpine Escape']);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(CreateInvoice::class)
+        ->set('data.booking_id', $booking->id)
+        ->set('data.amount', 100000)
+        ->set('data.total', 100000)
+        ->set('data.status', 'issued')
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $invoice = Invoice::query()->where('booking_id', $booking->id)->firstOrFail();
+    expect($invoice->invoice_no)->not->toBeEmpty();
+
+    Livewire::actingAs($owner, 'tenant')->test(CreatePayment::class)
+        ->set('data.invoice_id', $invoice->id)
+        ->set('data.method', 'bank_transfer')
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    expect($invoice->fresh())
+        ->paidAmount()->toBe(100000)
+        ->status->toBe('paid');
+});
+
+test('an accountant can create an invoice from a booking and record a payment against it', function () {
+    $tenant = billingTenant('Northwind Travel', 'northwind-travel');
+    $this->seed();
+
+    app(TenantContext::class)->set($tenant);
+    $accountant = TenantUser::factory()->create();
+    $accountantRole = Role::query()->where('name', 'Accountant')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $accountant->assignRole($accountantRole);
+
+    $customer = Customer::factory()->create();
+    $booking = Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Alpine Escape']);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($accountant, 'tenant')->test(CreateInvoice::class)
+        ->set('data.booking_id', $booking->id)
+        ->set('data.amount', 50000)
+        ->set('data.total', 50000)
+        ->set('data.status', 'issued')
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $invoice = Invoice::query()->where('booking_id', $booking->id)->firstOrFail();
+
+    Livewire::actingAs($accountant, 'tenant')->test(CreatePayment::class)
+        ->set('data.invoice_id', $invoice->id)
+        ->set('data.method', 'cash')
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    expect($invoice->fresh())
+        ->paidAmount()->toBe(50000)
+        ->status->toBe('paid');
 });

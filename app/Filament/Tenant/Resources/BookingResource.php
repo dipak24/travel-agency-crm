@@ -4,7 +4,9 @@ namespace App\Filament\Tenant\Resources;
 
 use App\Filament\Tenant\Resources\BookingResource\Pages;
 use App\Models\Booking;
+use App\Models\Customer;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
@@ -34,7 +36,15 @@ class BookingResource extends Resource
         return $schema->components([
             Section::make('Booking details')
                 ->schema([
-                    Select::make('customer_id')->relationship('customer', 'name')->searchable()->preload()->required(),
+                    Select::make('customer_id')
+                        ->relationship('customer', 'name')
+                        ->searchable()
+                        ->preload()
+                        ->required()
+                        ->createOptionForm(CustomerResource::quickCreateSchema())
+                        ->createOptionAction(fn (Action $action) => $action
+                            ->visible(fn (): bool => (bool) auth('tenant')->user()?->can('create', Customer::class))
+                            ->modalHeading('Add guest customer')),
                     TextInput::make('trip_name')->required()->maxLength(255),
                     Textarea::make('description')->rows(4),
                     TextInput::make('pax_count')->numeric()->integer()->minValue(1)->required()->default(1),

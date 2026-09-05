@@ -94,7 +94,7 @@ class PermissionSeeder extends Seeder
             ->whereIn('name', [
                 'view customers', 'create customers', 'update customers',
                 'view leads', 'create leads', 'update leads',
-                'view bookings', 'update bookings',
+                'view bookings', 'create bookings', 'update bookings',
                 'view invoices',
             ])->get());
 

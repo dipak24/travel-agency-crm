@@ -11,6 +11,7 @@ use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\Support\Enums\Width;
 use Filament\View\PanelsRenderHook;
 use Filament\Widgets\AccountWidget;
 use Filament\Widgets\FilamentInfoWidget;
@@ -39,6 +40,7 @@ class TenantPanelProvider extends PanelProvider
                 'primary' => Color::Amber,
                 'secondary' => Color::Blue,
             ])
+            ->maxContentWidth(Width::Full)
             ->renderHook(PanelsRenderHook::HEAD_END, fn (): string => static::tenantBrandColorStyles())
             ->discoverResources(in: app_path('Filament/Tenant/Resources'), for: 'App\Filament\Tenant\Resources')
             ->discoverPages(in: app_path('Filament/Tenant/Pages'), for: 'App\Filament\Tenant\Pages')

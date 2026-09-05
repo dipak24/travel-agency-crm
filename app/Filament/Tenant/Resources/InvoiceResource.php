@@ -4,14 +4,22 @@ namespace App\Filament\Tenant\Resources;
 
 use App\Filament\Tenant\Resources\InvoiceResource\Pages;
 use App\Filament\Tenant\Resources\InvoiceResource\RelationManagers\PaymentsRelationManager;
+use App\Models\Booking;
+use App\Models\Customer;
 use App\Models\Invoice;
 use BackedEnum;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
+use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -36,16 +44,29 @@ class InvoiceResource extends Resource
                 ->relationship('booking', 'trip_name')
                 ->searchable()
                 ->preload()
-                ->required(),
+                ->required()
+                ->live()
+                ->afterStateUpdated(function (Get $get, Set $set): void {
+                    $booking = Booking::query()->find($get('booking_id'));
+
+                    if ($booking) {
+                        $set('customer_id', $booking->customer_id);
+                    }
+                }),
             Select::make('customer_id')
                 ->relationship('customer', 'name')
                 ->searchable()
                 ->preload()
-                ->required(),
+                ->required()
+                ->createOptionForm(CustomerResource::quickCreateSchema())
+                ->createOptionAction(fn (Action $action) => $action
+                    ->visible(fn (): bool => (bool) auth('tenant')->user()?->can('create', Customer::class))
+                    ->modalHeading('Add guest customer')),
             TextInput::make('invoice_no')
-                ->label('Invoice Number')
+                ->label('Invoice number')
                 ->readOnly()
-                ->required(),
+                ->helperText('Auto-generated when the invoice is created.')
+                ->hiddenOn('create'),
             TextInput::make('amount')
                 ->label('Amount (minor units)')
                 ->numeric()
@@ -96,7 +117,29 @@ class InvoiceResource extends Resource
             TextColumn::make('total')->label('Total')->numeric()->sortable(),
             TextColumn::make('status')->badge()->sortable(),
             TextColumn::make('due_date')->date()->sortable(),
-        ])->defaultSort('created_at', 'desc');
+        ])
+            ->defaultSort('created_at', 'desc')
+            ->recordActions([
+                ActionGroup::make([
+                    EditAction::make(),
+                    Action::make('downloadPdf')
+                        ->label('Download PDF')
+                        ->icon('heroicon-o-arrow-down-tray')
+                        ->action(function (Invoice $record) {
+                            $record->loadMissing(['tenant', 'customer', 'booking']);
+
+                            return response()->streamDownload(
+                                fn () => print (Pdf::loadView('pdf.invoice', ['invoice' => $record])->output()),
+                                "{$record->invoice_no}.pdf",
+                            );
+                        }),
+                ])
+                    ->label('Actions')
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->color('gray')
+                    ->size('sm')
+                    ->tooltip('Actions'),
+            ]);
     }
 
     public static function getRelations(): array

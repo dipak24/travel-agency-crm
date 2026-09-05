@@ -1,29 +1,29 @@
 <?php
 
-use App\Models\Customer;
+use App\Filament\Tenant\Resources\BookingResource\Pages\CreateBooking;
+use App\Filament\Tenant\Resources\RoleResource;
 use App\Models\Booking;
-use App\Models\BookingAddon;
-use App\Models\BookingDocument;
 use App\Models\BookingTraveler;
+use App\Models\Customer;
 use App\Models\FixedDeparture;
 use App\Models\Lead;
 use App\Models\Package;
 use App\Models\Tenant;
 use App\Models\TenantUser;
-use App\Filament\Tenant\Resources\RoleResource;
-use App\Services\LeadConversion;
-use App\Support\TenantContext;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use LogicException;
-use Spatie\Permission\Models\Role;
-use App\Policies\BookingAddonPolicy;
-use App\Policies\BookingDocumentPolicy;
-use App\Policies\CustomerPolicy;
 use App\Policies\BookingPolicy;
 use App\Policies\BookingTravelerPolicy;
+use App\Policies\CustomerPolicy;
 use App\Policies\LeadPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\TenantUserPolicy;
+use App\Services\LeadConversion;
+use App\Support\TenantContext;
+use Filament\Actions\Testing\TestAction;
+use Filament\Facades\Filament;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
+use LogicException;
+use Spatie\Permission\Models\Role;
 
 uses(RefreshDatabase::class);
 
@@ -62,7 +62,7 @@ test('booking policy restricts booking access to authorized tenant staff', funct
         'guard_name' => 'tenant',
         'team_id' => $tenant->id,
     ]));
-    $booking = \App\Models\Booking::query()->create([
+    $booking = Booking::query()->create([
         'customer_id' => Customer::factory()->create()->id,
         'trip_name' => 'Local trip',
     ]);
@@ -73,6 +73,62 @@ test('booking policy restricts booking access to authorized tenant staff', funct
 
     expect((new BookingPolicy)->view($owner, $booking))->toBeTrue()
         ->and((new BookingPolicy)->view($otherStaff, $booking))->toBeFalse();
+});
+
+test('a tenant staff member can create a booking for a brand-new guest customer inline', function () {
+    $tenant = crmTenant('First Agency', 'first-agency');
+    $this->seed();
+
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $owner->assignRole($ownerRole);
+
+    Filament::setCurrentPanel('tenant');
+
+    $test = Livewire::actingAs($owner, 'tenant')->test(CreateBooking::class)
+        ->mountAction(TestAction::make('createOption')->schemaComponent('customer_id'))
+        ->set('mountedActions.0.data.name', 'Walk-in Guest')
+        ->set('mountedActions.0.data.email', 'guest@example.test')
+        ->set('mountedActions.0.data.phone', '555-0100')
+        ->set('mountedActions.0.data.type', 'individual')
+        ->callMountedAction()
+        ->assertHasNoFormErrors();
+
+    $guest = Customer::query()->where('email', 'guest@example.test')->firstOrFail();
+
+    expect($guest->tenant_id)->toBe($tenant->id)
+        ->and((int) $test->get('data.customer_id'))->toBe($guest->id);
+
+    $test->set('data.trip_name', 'Guest Getaway')
+        ->set('data.status', 'pending')
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    expect(Booking::query()->where('customer_id', $guest->id)->where('trip_name', 'Guest Getaway')->exists())->toBeTrue();
+});
+
+test('a sales agent, not just the tenant owner, can create a booking directly', function () {
+    $tenant = crmTenant('First Agency', 'first-agency');
+    $this->seed();
+
+    app(TenantContext::class)->set($tenant);
+    $sales = TenantUser::factory()->create();
+    $salesRole = Role::query()->where('name', 'Sales Agent')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $sales->assignRole($salesRole);
+    $customer = Customer::factory()->create();
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($sales, 'tenant')->test(CreateBooking::class)
+        ->assertOk()
+        ->set('data.customer_id', $customer->id)
+        ->set('data.trip_name', 'Direct Sale Trip')
+        ->set('data.status', 'pending')
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    expect(Booking::query()->where('customer_id', $customer->id)->where('trip_name', 'Direct Sale Trip')->exists())->toBeTrue();
 });
 
 test('booking travelers are encrypted and isolated by tenant', function () {

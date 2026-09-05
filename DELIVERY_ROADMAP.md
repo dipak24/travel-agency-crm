@@ -80,26 +80,77 @@ in as each phase starts.
    documents, add-ons, invoices, invoice numbering, discounts, payment records.
    **In progress.**
    - Done: `Booking`/`BookingTraveler`/`BookingDocument`/`BookingAddon`/
-     `Invoice` models, migrations, tenant-panel resources, and policies;
+     `Invoice`/`Payment` models, migrations, tenant-panel resources
+     (`PaymentResource` included, gated by `PaymentPolicy`), and policies;
      encrypted `passport_no` on `Customer` and `BookingTraveler`; unique
      per-tenant invoice numbering; cross-tenant authorization tests for
-     bookings, travelers, documents, add-ons, and invoices; private-disk +
-     MIME-checked document uploads.
+     bookings, travelers, documents, add-ons, invoices, and payments;
+     private-disk + MIME-checked document uploads; document upload/review
+     (approve/reject + rejection reason) and add-on management, both wired as
+     inline repeaters on `BookingResource`'s own form rather than standalone
+     resources; per-invoice PDF export (`barryvdh/laravel-dompdf`, already
+     installed and used by the admin panel's `TenantInvoiceResource`) via a
+     `downloadPdf` table action + `resources/views/pdf/invoice.blade.php`,
+     covered by `BillingModulesTest`; walk-in/guest customer support on both
+     `BookingResource` and `InvoiceResource` — their `customer_id` selects now
+     have a `createOptionForm` (`CustomerResource::quickCreateSchema()`) so
+     staff can create a brand-new guest `Customer` in a modal without leaving
+     the booking/invoice form, gated by `CustomerPolicy::create` (hidden for
+     roles like Accountant that can create invoices but not customers); on
+     `InvoiceResource`, picking a `booking_id` also auto-fills `customer_id`
+     from that booking. Covered by `CrmModulesTest` and `BillingModulesTest`.
+   - **Fixed a real blocker**: `InvoiceResource`'s `invoice_no` field was
+     `required()` *and* `readOnly()` with nothing to populate it on create —
+     every tenant, staff or owner, got a silent "Invoice Number field is
+     required" validation failure on every attempt to create an invoice
+     through the panel (the model only fills `invoice_no` in its `creating()`
+     hook, which runs after Filament's form validation already rejected the
+     empty value). Found by exercising `CreateInvoice` end-to-end in a test
+     rather than only unit-testing the model/policy. Fixed to match the
+     working admin-panel convention (`TenantInvoiceResource`): `invoice_no` is
+     now `hiddenOn('create')` and just a read-only display field on edit.
+   - **Fixed a permission gap**: `Sales Agent` had `update bookings` but not
+     `create bookings` in `PermissionSeeder`, so the only way that role could
+     ever produce a `Booking` was via lead conversion (`LeadConversion`
+     service, which bypasses `BookingPolicy` entirely) — they could not create
+     one directly for a walk-in customer, even though `BookingResource`
+     supports it. `Sales Agent` now also has `create bookings`. `Operations`
+     and `Accountant` were left as-is (operational/accounting roles, not
+     sales) — deliberately not given `create bookings`.
+   - Verified end-to-end (not just via Policy unit checks) that both an admin
+     (Tenant Owner) and staff (Sales Agent for bookings, Accountant for
+     invoices/payments) can create a `Booking`, an `Invoice` from that
+     booking, and a `Payment` against that invoice through the actual
+     `CreateBooking`/`CreateInvoice`/`CreatePayment` Livewire pages — this is
+     what caught both bugs above. Covered by new tests in `CrmModulesTest`
+     and `BillingModulesTest`.
+   - **Fixed two more UI bugs found the same way** (driving real pages, not
+     just reading code): `ListBookings`, `ListBookingTravelers`, and
+     `ListInvoices` had no way to reach their `create` page from the index at
+     all — every other `ListRecords` page in the app explicitly overrides
+     `getHeaderActions()` to return `[CreateAction::make()]` (this project
+     does not get that button for free from Filament's own default), but
+     these three were missing the override. Fixed by adding it to all three.
+     Separately, every page in every panel (List pages especially — Create/
+     Edit pages already had it via `HasFullWidthForm`) was rendering inside
+     Filament's default constrained `7xl` container instead of full width,
+     since none of the three `PanelProvider`s configured a panel-wide max
+     content width. Fixed once, panel-wide, via `->maxContentWidth(Width::
+     Full)` on `AdminPanelProvider`, `TenantPanelProvider`, and
+     `PortalPanelProvider`, rather than patching each of the 20 List pages
+     individually. Both regressions are now guarded by
+     `TenantPanelPagesTest`.
    - Remaining:
-     - `Payment`: add a Filament resource, a Policy, and test coverage —
-       model/migration exist but it's currently unreachable through any UI and
-       untested.
-     - `BookingDocument` and `BookingAddon` have models, policies, and tests,
-       but **no Filament UI at all** yet (not even a standalone resource) —
-       staff have no way to upload/review a document or add/manage an add-on
-       through the panel.
-     - Relation managers so `Booking` surfaces its travelers/documents/
-       add-ons/payments inline and `Invoice` surfaces its line items, instead of
-       unrelated flat resources (`BookingTraveler` is currently a flat top-level
-       resource too, and should move under `Booking`).
-     - Invoice PDF export + "send to customer" action — no PDF package
-       (`dompdf`/`laravel-pdf`) is installed yet; required by the spec for this
-       phase.
+     - Relation managers so `Booking` surfaces its travelers/payments inline
+       and `Invoice` surfaces its line items (`InvoiceItem` has a model and
+       relation but no form UI), instead of unrelated flat resources
+       (`BookingTraveler` is currently a flat top-level resource too, and
+       should move under `Booking`; documents/add-ons are already nested via
+       repeaters, so this is now just travelers + payments + invoice items).
+     - "Email invoice to customer" action — no `Mail`/notification
+       infrastructure exists yet for outbound tenant email at all, so this
+       likely wants to land alongside Phase 11's transactional-email work
+       rather than as a one-off `Mail::send()` here.
      - Decide scope: `promo_codes` and `gift_vouchers` tables exist but have no
        models/UI, despite being part of the invoice discount-resolution chain
        (architecture doc §4). Build here or explicitly defer to Phase 10
@@ -313,6 +364,9 @@ unconfirmed
 **Customer Management** — built
 
 - [x] Create customer
+- [x] Create a walk-in/guest customer inline while creating a booking or
+      invoice — `CustomerResource::quickCreateSchema()` as a `createOptionForm`
+      on both resources' `customer_id` select, gated by `CustomerPolicy`
 - [x] List / view / edit customer (contact history, past bookings)
 - [ ] Delete customer
 - [ ] Invite customer to portal (send invite email — needed before Phase 9 can
@@ -352,12 +406,15 @@ unconfirmed
 **Booking Management** — partial
 
 - [x] Create / list / edit booking
-- [ ] View booking detail with nested travelers/documents/add-ons/payments
-      (currently four unrelated flat resources)
+- [ ] View booking detail with nested travelers/payments (documents and
+      add-ons are already nested, as repeaters on `BookingResource`'s own
+      form; travelers and payments are still separate flat resources)
 - [x] Add traveler (works today, but as a standalone resource, not nested under
       Booking)
-- [ ] Upload / review document (no UI)
-- [ ] Add / manage add-on (no UI)
+- [x] Upload / review document — repeater on `BookingResource`'s form
+      (doc type, file upload, approve/reject status + rejection reason)
+- [x] Add / manage add-on — repeater on `BookingResource`'s form (service,
+      quantity, price, status)
 - [x] Record payment — `PaymentResource`
 - [ ] Cancel booking
 
@@ -367,7 +424,9 @@ unconfirmed
 - [x] List / edit invoice
 - [x] Per-tenant invoice numbering (tested)
 - [ ] Itemized line-item management UI (`InvoiceItem` has no relation manager)
-- [ ] PDF export
+- [x] PDF export — `downloadPdf` table action on `InvoiceResource`
+      (`resources/views/pdf/invoice.blade.php`), tested in
+      `BillingModulesTest`
 - [ ] Email invoice to customer
 - [x] Mark paid / partial / overdue as an explicit action — automatic now,
       driven by the payment ledger (`Invoice::recalculateStatus()`)
@@ -375,12 +434,14 @@ unconfirmed
       `InvoiceResource`'s `PaymentsRelationManager`, supports multiple
       partial/advance payments per invoice
 
-**Document Management** — not started
+**Document Management** — built as a repeater on `BookingResource`, not a
+standalone module
 
-- [ ] Staff upload document
-- [ ] List documents per booking
-- [ ] Approve document
-- [ ] Reject document
+- [x] Staff upload document — `FileUpload` field in the documents repeater
+- [x] List documents per booking — the repeater itself, scoped to the booking
+      being edited
+- [x] Approve document — `status` field in the repeater
+- [x] Reject document — `status` field + `rejection_reason` in the repeater
 
 **Public Booking Website / Landing Page config** — not started
 
