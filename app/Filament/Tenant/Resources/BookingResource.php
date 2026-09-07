@@ -3,8 +3,11 @@
 namespace App\Filament\Tenant\Resources;
 
 use App\Filament\Tenant\Resources\BookingResource\Pages;
+use App\Filament\Tenant\Resources\BookingResource\RelationManagers\PaymentsRelationManager;
+use App\Filament\Tenant\Resources\BookingResource\RelationManagers\TravelersRelationManager;
 use App\Models\Booking;
 use App\Models\Customer;
+use App\Models\IncludeExclude;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
@@ -14,6 +17,7 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -56,12 +60,61 @@ class BookingResource extends Resource
                         'completed' => 'Completed',
                         'cancelled' => 'Cancelled',
                     ])->required(),
+                    Textarea::make('customer_notes')
+                        ->label('Customer\'s note to staff')
+                        ->rows(3)
+                        ->disabled()
+                        ->dehydrated(false)
+                        ->visibleOn('edit')
+                        ->helperText('Read-only — written by the customer from their portal.'),
                 ])
                 ->columns(1),
+            Section::make('Include / exclude list')
+                ->schema([
+                    Repeater::make('includeExcludes')
+                        ->relationship('includeExcludes')
+                        ->schema([
+                            Select::make('type')->options([
+                                'include' => 'Include',
+                                'exclude' => 'Exclude',
+                            ])->required(),
+                            Select::make('include_exclude_id')
+                                ->label('From catalog (optional)')
+                                ->relationship('includeExclude', 'title')
+                                ->searchable()
+                                ->preload()
+                                ->live()
+                                ->afterStateUpdated(function (?string $state, Set $set): void {
+                                    if (! $state) {
+                                        return;
+                                    }
+
+                                    $catalogItem = IncludeExclude::query()->find($state);
+
+                                    if ($catalogItem) {
+                                        $set('type', $catalogItem->type);
+                                        $set('title', $catalogItem->title);
+                                        $set('description', $catalogItem->description);
+                                    }
+                                })
+                                ->helperText('Prefills title/description as a snapshot — editing the catalog item later won\'t change this booking.'),
+                            TextInput::make('title')->required()->maxLength(255),
+                            Textarea::make('description')->rows(2),
+                            TextInput::make('sort_order')->numeric()->integer()->default(0),
+                        ])
+                        ->itemLabel(fn (array $state): ?string => $state['title'] ?? null)
+                        ->addActionLabel('Add item')
+                        ->defaultItems(0)
+                        ->columns(2),
+                ]),
             Section::make('Travel documents')
                 ->schema([
                     Repeater::make('documents')
                         ->relationship('documents')
+                        ->mutateRelationshipDataBeforeCreateUsing(fn (array $data): array => [
+                            ...$data,
+                            'uploaded_by' => optional(auth('tenant')->user())->email ?? 'staff',
+                        ])
                         ->schema([
                             Select::make('doc_type')->options([
                                 'passport' => 'Passport',
@@ -93,6 +146,10 @@ class BookingResource extends Resource
                 ->schema([
                     Repeater::make('addons')
                         ->relationship('addons')
+                        ->mutateRelationshipDataBeforeCreateUsing(fn (array $data): array => [
+                            ...$data,
+                            'added_by' => optional(auth('tenant')->user())->email ?? 'staff',
+                        ])
                         ->schema([
                             Select::make('service_id')->relationship('service', 'name')->searchable()->preload()->required(),
                             TextInput::make('quantity')->label('Quantity')->numeric()->integer()->minValue(1)->default(1)->required(),
@@ -122,6 +179,14 @@ class BookingResource extends Resource
             TextColumn::make('total_amount')->label('Total (minor units)')->numeric(),
             TextColumn::make('status')->badge()->sortable(),
         ])->defaultSort('created_at', 'desc');
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            TravelersRelationManager::class,
+            PaymentsRelationManager::class,
+        ];
     }
 
     public static function getPages(): array

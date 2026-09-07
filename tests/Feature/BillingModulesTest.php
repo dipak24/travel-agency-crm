@@ -1,7 +1,11 @@
 <?php
 
+use App\Filament\Tenant\Resources\BookingResource\Pages\EditBooking;
+use App\Filament\Tenant\Resources\BookingResource\RelationManagers\PaymentsRelationManager as BookingPaymentsRelationManager;
 use App\Filament\Tenant\Resources\InvoiceResource\Pages\CreateInvoice;
+use App\Filament\Tenant\Resources\InvoiceResource\Pages\EditInvoice;
 use App\Filament\Tenant\Resources\InvoiceResource\Pages\ListInvoices;
+use App\Filament\Tenant\Resources\InvoiceResource\RelationManagers\ItemsRelationManager;
 use App\Filament\Tenant\Resources\PaymentResource\Pages\CreatePayment;
 use App\Models\Booking;
 use App\Models\Customer;
@@ -381,4 +385,75 @@ test('an accountant can create an invoice from a booking and record a payment ag
     expect($invoice->fresh())
         ->paidAmount()->toBe(50000)
         ->status->toBe('paid');
+});
+
+test('a tenant staff member can add a line item to an invoice from its nested relation manager', function () {
+    $tenant = billingTenant('Northwind Travel', 'northwind-travel');
+    $this->seed();
+
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $owner->assignRole($ownerRole);
+
+    $customer = Customer::factory()->create();
+    $booking = Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Alpine Escape']);
+    $invoice = Invoice::query()->create([
+        'booking_id' => $booking->id,
+        'customer_id' => $customer->id,
+        'total' => 0,
+        'currency' => 'USD',
+        'status' => 'draft',
+    ]);
+    $item = $invoice->items()->create([
+        'description' => 'Airport transfer',
+        'qty' => 2,
+        'unit_price' => 1500,
+        'total' => 3000,
+    ]);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(ItemsRelationManager::class, [
+        'ownerRecord' => $invoice,
+        'pageClass' => EditInvoice::class,
+    ])
+        ->assertOk()
+        ->assertActionExists(TestAction::make('create')->table())
+        ->assertCanSeeTableRecords([$item]);
+
+    expect($item->tenant_id)->toBe($tenant->id);
+});
+
+test('a booking surfaces payments across all of its invoices via its nested relation manager', function () {
+    $tenant = billingTenant('Northwind Travel', 'northwind-travel');
+    $this->seed();
+
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $owner->assignRole($ownerRole);
+
+    $customer = Customer::factory()->create();
+    $booking = Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Alpine Escape']);
+    $invoice = Invoice::query()->create([
+        'booking_id' => $booking->id,
+        'customer_id' => $customer->id,
+        'total' => 5000,
+        'currency' => 'USD',
+        'status' => 'issued',
+    ]);
+    Payment::query()->create([
+        'invoice_id' => $invoice->id, 'amount' => 2000, 'currency' => 'USD',
+        'method' => 'bank_transfer', 'type' => 'installment', 'status' => 'completed', 'paid_at' => now(),
+    ]);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(BookingPaymentsRelationManager::class, [
+        'ownerRecord' => $booking,
+        'pageClass' => EditBooking::class,
+    ])
+        ->assertOk()
+        ->assertCanSeeTableRecords($booking->payments);
 });

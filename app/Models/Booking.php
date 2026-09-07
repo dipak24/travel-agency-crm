@@ -3,19 +3,32 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Notifications\BookingStatusChanged;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class Booking extends Model
 {
-    use BelongsToTenant, SoftDeletes;
+    use BelongsToTenant, LogsActivity, SoftDeletes;
+
+    protected static function booted(): void
+    {
+        static::updated(function (self $booking): void {
+            if ($booking->wasChanged('status')) {
+                $booking->customer?->notify(new BookingStatusChanged($booking));
+            }
+        });
+    }
 
     protected $fillable = [
         'tenant_id', 'lead_id', 'customer_id', 'package_id', 'fixed_departure_id',
         'trip_name', 'booked_itinerary', 'description', 'start_date', 'end_date',
-        'pax_count', 'status', 'total_amount', 'created_by_staff_id',
+        'pax_count', 'status', 'total_amount', 'created_by_staff_id', 'customer_notes',
     ];
 
     protected function casts(): array
@@ -69,6 +82,11 @@ class Booking extends Model
         return $this->hasMany(Invoice::class);
     }
 
+    public function payments(): HasManyThrough
+    {
+        return $this->hasManyThrough(Payment::class, Invoice::class);
+    }
+
     public function documents(): HasMany
     {
         return $this->hasMany(BookingDocument::class);
@@ -77,5 +95,19 @@ class Booking extends Model
     public function addons(): HasMany
     {
         return $this->hasMany(BookingAddon::class);
+    }
+
+    public function includeExcludes(): HasMany
+    {
+        return $this->hasMany(BookingIncludeExclude::class);
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName('booking')
+            ->logFillable()
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges();
     }
 }

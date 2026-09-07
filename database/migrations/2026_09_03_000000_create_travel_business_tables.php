@@ -42,6 +42,7 @@ return new class extends Migration
             $table->string('status')->default('pending');
             $table->unsignedBigInteger('total_amount')->default(0);
             $table->foreignId('created_by_staff_id')->nullable()->constrained('tenant_users')->nullOnDelete();
+            $table->text('customer_notes')->nullable();
             $table->timestamps();
             $table->softDeletes();
             $table->index(['tenant_id', 'status', 'start_date']);

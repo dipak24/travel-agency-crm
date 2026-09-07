@@ -1,9 +1,11 @@
 <?php
 
 use App\Models\FixedDeparture;
+use App\Models\GiftVoucher;
 use App\Models\GroupDiscountTier;
 use App\Models\IncludeExclude;
 use App\Models\Package;
+use App\Models\PromoCode;
 use App\Models\Service;
 use App\Models\ServiceAvailability;
 use App\Models\Tenant;
@@ -114,4 +116,29 @@ test('tenant-owned catalog relations reject cross-tenant writes', function () {
         'discount_type' => 'percentage',
         'discount_value' => 5,
     ]))->toThrow(LogicException::class);
+});
+
+test('promo codes and gift vouchers are isolated between tenants', function () {
+    $firstTenant = catalogTenant('First Agency', 'first-agency');
+    $secondTenant = catalogTenant('Second Agency', 'second-agency');
+
+    app(TenantContext::class)->set($firstTenant);
+    $promoCode = PromoCode::query()->create([
+        'code' => 'SUMMER10',
+        'discount_type' => 'percent',
+        'discount_value' => 10,
+    ]);
+    $giftVoucher = GiftVoucher::query()->create([
+        'code' => 'GIFT-100',
+        'value' => 10000,
+        'currency' => 'USD',
+    ]);
+
+    expect(PromoCode::query()->withoutGlobalScopes()->find($promoCode->id)->tenant_id)->toBe($firstTenant->id)
+        ->and(GiftVoucher::query()->withoutGlobalScopes()->find($giftVoucher->id)->tenant_id)->toBe($firstTenant->id);
+
+    app(TenantContext::class)->set($secondTenant);
+
+    expect(PromoCode::query()->find($promoCode->id))->toBeNull()
+        ->and(GiftVoucher::query()->find($giftVoucher->id))->toBeNull();
 });

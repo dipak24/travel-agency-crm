@@ -4,21 +4,23 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use Filament\Models\Contracts\FilamentUser;
+use Filament\Models\Contracts\HasAvatar;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Traits\HasRoles;
 
-class Customer extends Authenticatable implements FilamentUser
+class Customer extends Authenticatable implements FilamentUser, HasAvatar
 {
     use BelongsToTenant, HasFactory, HasRoles, Notifiable;
 
     protected $fillable = [
-        'tenant_id', 'name', 'email', 'password', 'phone', 'type', 'address',
-        'passport_no', 'nationality', 'notes',
+        'tenant_id', 'name', 'email', 'password', 'avatar', 'phone', 'type',
+        'address', 'passport_no', 'nationality', 'notes',
     ];
 
     protected $hidden = ['password', 'remember_token', 'passport_no'];
@@ -40,9 +42,21 @@ class Customer extends Authenticatable implements FilamentUser
 
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->password !== null
-            && $panel->getId() === 'portal'
+        // Deliberately does NOT also check `$this->password !== null` here.
+        // Filament's own password-reset page re-checks canAccessPanel()
+        // *before* saving the new password, using the model's current
+        // (still-null, pre-reset) state — so gating login on a non-null
+        // password here would make it impossible for an invited customer to
+        // ever complete their first password setup. A null password already
+        // blocks login on its own, since no submitted password can hash-match
+        // a null stored value.
+        return $panel->getId() === 'portal'
             && $this->tenant?->status !== 'suspended';
+    }
+
+    public function getFilamentAvatarUrl(): ?string
+    {
+        return $this->avatar ? Storage::disk('public')->url($this->avatar) : null;
     }
 
     protected function casts(): array

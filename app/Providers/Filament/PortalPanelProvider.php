@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Portal\Pages\Profile;
 use App\Http\Middleware\ResolveTenant;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -29,7 +30,10 @@ class PortalPanelProvider extends PanelProvider
             ->id('portal')
             ->path('portal')
             ->authGuard('customer')
+            ->authPasswordBroker('customers')
             ->login()
+            ->passwordReset()
+            ->profile(Profile::class)
             ->colors([
                 'primary' => Color::Amber,
             ])

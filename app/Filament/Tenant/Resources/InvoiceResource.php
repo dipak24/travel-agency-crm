@@ -3,6 +3,7 @@
 namespace App\Filament\Tenant\Resources;
 
 use App\Filament\Tenant\Resources\InvoiceResource\Pages;
+use App\Filament\Tenant\Resources\InvoiceResource\RelationManagers\ItemsRelationManager;
 use App\Filament\Tenant\Resources\InvoiceResource\RelationManagers\PaymentsRelationManager;
 use App\Models\Booking;
 use App\Models\Customer;
@@ -145,6 +146,7 @@ class InvoiceResource extends Resource
     public static function getRelations(): array
     {
         return [
+            ItemsRelationManager::class,
             PaymentsRelationManager::class,
         ];
     }

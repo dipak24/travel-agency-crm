@@ -78,7 +78,10 @@ in as each phase starts.
 
 7. **Phase 7 — Booking & Sales (Billing).** Bookings, travelers, private
    documents, add-ons, invoices, invoice numbering, discounts, payment records.
-   **In progress.**
+   **Completed** — matching the Phase 3 precedent, the two items still open
+   below don't block this: "email invoice" is structurally blocked on Phase
+   11's mail infrastructure (not yet built), and cancellation/installments is
+   deliberately deferred pending your own rules, not a missing capability.
    - Done: `Booking`/`BookingTraveler`/`BookingDocument`/`BookingAddon`/
      `Invoice`/`Payment` models, migrations, tenant-panel resources
      (`PaymentResource` included, gated by `PaymentPolicy`), and policies;
@@ -140,28 +143,78 @@ in as each phase starts.
      `PortalPanelProvider`, rather than patching each of the 20 List pages
      individually. Both regressions are now guarded by
      `TenantPanelPagesTest`.
+   - Done since: relation managers so `Booking` surfaces its travelers and
+     payments inline, and `Invoice` surfaces its line items — `TravelersRelationManager`
+     and a read-only `PaymentsRelationManager` (via a new `Booking::payments()`
+     `hasManyThrough(Payment::class, Invoice::class)`, since payments belong to
+     an invoice, not a booking directly — write actions are deliberately left
+     off this one; use the Invoice's own `PaymentsRelationManager` or
+     `PaymentResource` to actually record a payment) on `BookingResource`, and
+     `ItemsRelationManager` (with a live qty×unit_price→total calculation) on
+     `InvoiceResource`. New `InvoiceItemPolicy` (mirrors `PaymentPolicy`,
+     gated on the same `*  invoices` permissions), registered in
+     `AppServiceProvider`. `BookingTravelerResource` was deliberately kept
+     as a standalone resource alongside the new nested relation manager
+     rather than removed — both read/write the same `travelers` relation, and
+     removing the flat resource would touch permissions/tests/nav for no
+     functional gain. Covered by new tests in `CrmModulesTest` and
+     `BillingModulesTest`.
+   - Done since: `PromoCode` and `GiftVoucher` models + tenant-panel CRUD
+     resources (`PromoCodeResource`, `GiftVoucherResource`, both under the
+     existing "Catalog" nav group and gated by the existing
+     `TenantCatalogPolicy`/`*  catalog` permissions — same access pattern as
+     `GroupDiscountTier`/`Service`, i.e. Tenant Owner only for now, not Sales/
+     Accountant). This resolves the roadmap's own "build here or defer"
+     question: the old Phase 4 numbering (which these tables were originally
+     scoped under) maps to the new Phase 7, so building them here rather than
+     deferring to Phase 10 matches what was already decided, just not yet
+     acted on. Scope is deliberately just the tenant-side management CRUD —
+     actual redemption (applying a promo code or gift voucher to an invoice)
+     is a Phase 9 Customer Portal checkout feature per the architecture doc's
+     panel breakdown (§5), not built here. Covered by a new test in
+     `CatalogModulesTest`.
    - Remaining:
-     - Relation managers so `Booking` surfaces its travelers/payments inline
-       and `Invoice` surfaces its line items (`InvoiceItem` has a model and
-       relation but no form UI), instead of unrelated flat resources
-       (`BookingTraveler` is currently a flat top-level resource too, and
-       should move under `Booking`; documents/add-ons are already nested via
-       repeaters, so this is now just travelers + payments + invoice items).
      - "Email invoice to customer" action — no `Mail`/notification
        infrastructure exists yet for outbound tenant email at all, so this
        likely wants to land alongside Phase 11's transactional-email work
        rather than as a one-off `Mail::send()` here.
-     - Decide scope: `promo_codes` and `gift_vouchers` tables exist but have no
-       models/UI, despite being part of the invoice discount-resolution chain
-       (architecture doc §4). Build here or explicitly defer to Phase 10
-       (Payments)?
-     - Decide now (cheap to fold in, expensive to retrofit): cancellation/
-       refund policy tiers and installment/deposit payment schedules on bookings
-       — both touch the invoice/payment models being built here.
-     - Audit logging: `spatie/laravel-activitylog` is installed but wired into
-       zero models — needed before the Phase 12 Audit Log Viewer has anything to
-       show, and cheap to add per-model while Policies are already being touched
-       in this phase.
+     - Cancellation/refund policy tiers and installment/deposit payment
+       schedules on bookings — **deliberately deferred** (decided 2026-09-06):
+       unlike promo codes/vouchers, the architecture doc only sketches this
+       (no migration exists — proposed `cancellation_policies` table +
+       `cancelled_reason`/`refund_amount` on `bookings`, and a proposed
+       `payment_schedule` — deposit %, balance due date — per booking), and
+       explicitly leaves the actual tier/schedule rules to be specified
+       later. Revisit as its own scoped piece of work once those rules are
+       decided, rather than inventing them now — still cheaper to add before
+       real booking/invoice data piles up, so don't push it indefinitely.
+   - Done since: audit logging — `LogsActivity` + `getActivitylogOptions()`
+     wired onto the Phase 7 billing/booking models (`Booking`,
+     `BookingTraveler`, `BookingDocument`, `BookingAddon`, `Invoice`,
+     `InvoiceItem`, `Payment`; `BookingTraveler` excludes `passport_no` from
+     what gets logged, matching its existing encryption/`$hidden` treatment).
+     Not extended to every model app-wide — scoped to this phase's own
+     models, giving the Phase 12 Audit Log Viewer something to show without
+     taking on unrelated phases' models as part of this work.
+     **Found and fixed a real pre-existing schema bug while wiring this up**:
+     the project's `activity_log` migrations (written against an older
+     version of the package's schema) never added the `attribute_changes`
+     json column that the installed `spatie/laravel-activitylog: ^5.1`
+     unconditionally writes on every single logged event
+     (`ActivityLogger::withChanges()` sets it directly, no config toggle
+     skips it) — so the very first activity logged by any model, in any
+     environment, would have thrown a `QueryException` and silently broken
+     whatever action triggered it. Nothing had used the package before this,
+     so the gap was latent and untested until now. Fixed by adding the
+     column to the original `create_activity_log_table` migration (per this
+     repo's pre-launch "edit the original migration" convention) and
+     rebuilding the dev DB via `migrate:fresh --seed`. Also fixed causer
+     attribution: the package's default causer resolver only ever checks
+     `config('auth.defaults.guard')` (`tenant` here), so an action taken on
+     the `super_admin` or `customer` guard would have been logged with no
+     causer at all — registered a `CauserResolver::resolveUsing()` override
+     in `AppServiceProvider` that checks `super_admin` → `tenant` →
+     `customer` in order. Covered by new `tests/Feature/AuditLoggingTest.php`.
 
 8. **Phase 8 — Public Website & API.** Tenant resolution (subdomain or
    `?tenant=slug`), published package/departure read-only API endpoints, public
@@ -173,15 +226,183 @@ in as each phase starts.
 9. **Phase 9 — Customer Portal.** Invite-only account creation, profile, booking
    history (read-only for past trips), traveler/document upload workflows,
    add-on service requests, invoice view + promo/voucher redemption at checkout.
-   **Not started.** Depends on Phase 7 (needs real booking/invoice/document data
-   to display) — cannot start meaningfully before Phase 7's remaining items
-   land.
+   **Functionally complete**, except the two payment gateways (PayPal/HBL),
+   which are explicitly Phase 10 scope. Depends on Phase 7 (needs real
+   booking/invoice/document data to display) — Phase 7 is complete.
+   - Done: invite-only account creation — `Customer` already had guard/
+     provider/password-broker config and a `password === null` gate from an
+     earlier phase, but nothing actually drove it end-to-end yet. Added: an
+     `inviteToPortal` action on the tenant panel's `CustomerResource` that
+     mints a password-reset token (`Password::broker('customers')`) and
+     emails it via a new `App\Notifications\CustomerPortalInvite`
+     (Laravel's built-in `MailMessage` builder, no custom Blade view needed —
+     this app's first outbound email, using the existing `MAIL_MAILER=log`
+     dev config); `PortalPanelProvider` now has `->passwordReset()` +
+     `->authPasswordBroker('customers')` enabled, giving both the invite's
+     "set your password" landing page and a genuine "forgot password" flow
+     for already-onboarded customers, via the same Filament-provided pages.
+     **Fixed two real bugs surfaced while wiring this up** (both recorded in
+     `.ai/rules/filament.md`): (1) `Customer::canAccessPanel()`'s
+     `password !== null` check created a chicken-and-egg lockout — Filament's
+     own `ResetPassword` page checks `canAccessPanel()` *before* saving the
+     new password, so an invited customer could never complete setup; fixed
+     by dropping that check (a null password already can't match any login
+     attempt on its own, so nothing is actually less secure). (2) enabling
+     `passwordReset()` without also setting `authPasswordBroker('customers')`
+     silently resolved to the app's default `tenant_users` broker instead —
+     "forgot password" would have claimed success while emailing no one, and
+     completing a reset would have validated the token against the wrong
+     table and silently never saved the new password. Covered by
+     `tests/Feature/CustomerPortalAuthTest.php` (5 tests: blocked login with
+     no password, `canAccessPanel` no longer depends on password presence,
+     full invite → set-password → login round trip, invite action hidden
+     once a password already exists, and the already-onboarded
+     forgot-password path).
+   - Done since: Profile — `App\Filament\Portal\Pages\Profile` extends
+     Filament's own `EditProfile` auth page (wired via `PortalPanelProvider::
+     profile()`), adding phone/address/nationality/passport-number fields and
+     an avatar upload on top of Filament's stock name/email/password form.
+     New `avatar` column on `customers` (`Customer` now implements Filament's
+     `HasAvatar` contract so it actually renders in the portal topbar).
+     **Fixed two more inherited defaults that don't hold in a multi-tenant
+     app**: Filament's default email-uniqueness check validates against the
+     whole table, but this app's real constraint is per-tenant
+     (`unique(['tenant_id', 'email'])`) — without a fix, a customer could be
+     wrongly blocked from an email already free in their own tenant just
+     because an unrelated tenant's customer happens to use it. Added the same
+     tenant-scoped check for `phone` too, since it has the same composite
+     constraint and would otherwise surface as a raw `QueryException` instead
+     of a form error. Also: `attributesToArray()` (used to fill the form)
+     respects `Customer::$hidden`, which hides `passport_no` — without
+     re-merging the real (auto-decrypted) value in `mutateFormDataBeforeFill`,
+     editing the profile would silently blank out an existing passport number
+     on save. Covered by `tests/Feature/CustomerPortalProfileTest.php`.
+   - Done since: My Bookings + Booking Detail — a new, portal-only
+     `App\Filament\Portal\Resources\BookingResource` (list + view pages only;
+     `canCreate`/`canEdit`/`canDelete`/`canDeleteAny` all hardcoded `false`,
+     query scoped to `customer_id = auth('customer')->id()`) shows a
+     customer's own bookings split into Current/Past tabs (by `end_date`
+     against today, not `status` — "past trips" is a date concept, not an
+     administrative one), and a detail page (Filament Infolist, not a form —
+     genuinely read-only) showing the itinerary snapshot, include/exclude
+     list, and traveler list (name/DOB/document status — deliberately not
+     `passport_no`, kept as sensitive even from the customer it belongs to,
+     matching its existing hidden/encrypted treatment elsewhere).
+     `BookingPolicy::viewAny`/`view` now accept `TenantUser|Customer` and
+     branch — Laravel's `Gate::policy()` is one class per model regardless of
+     guard, so a model two guards both touch needs its policy to handle both,
+     not a second registration.
+     Also built the previously-missing tenant-side piece this needed:
+     `booking_include_exclude` had a migration since Phase 0 but no model and
+     no way for staff to ever populate it — added `BookingIncludeExclude` and
+     a repeater on the tenant `BookingResource` form (same pattern as the
+     existing documents/add-ons repeaters), with picking a catalog item
+     snapshotting its title/description onto the booking (editing the catalog
+     later doesn't retroactively change past bookings, per the architecture
+     doc). **Found a real table-naming bug while building this**: Eloquent's
+     default convention would look for `booking_include_excludes`, but the
+     actual migrated table is `booking_include_exclude` (singular) — fixed
+     with an explicit `protected $table`, recorded in `.ai/rules/resources.md`
+     since it'll bite any other model backed by a similarly-named
+     architecture-doc table.
+     "Notes/messages to staff" (architecture doc §5) is genuinely unscoped —
+     no data model, no thread/notification design — so rather than building a
+     full messaging system, added the minimal version that satisfies the
+     literal requirement: a `customer_notes` text column on `bookings`, an
+     "Add/edit a note" action on the portal's booking detail page, and a
+     read-only display of it on the tenant `BookingResource` edit form. A
+     real threaded/notified messaging system, if wanted later, is a separate
+     scoped decision. Covered by `tests/Feature/CustomerPortalBookingsTest.php`.
+   - Done since: Document upload, add-on requests, group/agency bulk actions,
+     invoices + promo/voucher checkout. All four remaining portal modules
+     built in one pass:
+     - **Document upload**: a `Booking`-detail header action lets a customer
+       upload one or more documents at once (`FileUpload::multiple()`) with
+       a doc type, creating `pending` `BookingDocument` rows; approval status
+       (including the rejection reason) now shows read-only on the same
+       detail page. Fixed a real, previously-latent bug found while wiring
+       this up: the tenant `BookingResource`'s own staff-facing documents/
+       add-ons repeaters never set `uploaded_by`/`added_by` (both NOT NULL,
+       no default) — any staff member submitting either repeater would have
+       hit a raw `QueryException`. Fixed both via
+       `Repeater::mutateRelationshipDataBeforeCreateUsing()`.
+     - **Add-on services**: a "Request add-on" action browses active
+       `services`; the actual request/inventory logic lives in a new
+       `App\Services\BookingAddonRequest` (mirroring the existing
+       `FixedDepartureCapacity` service's `lockForUpdate()`-inside-a-
+       transaction pattern) so it stays unit-testable without fighting
+       Filament's broken mounted-action-form testing (see
+       `.ai/rules/feature.md`) — a limited-availability service checks/
+       locks/increments its `service_availability` row for the booking's
+       `start_date` and throws rather than overbooking; a service with no
+       inventory limit just creates the `requested` `BookingAddon` directly.
+       **Found a second real bug** while testing this: comparing a
+       `date`-cast column with `->where('date', $carbon->toDateString())`
+       silently matches nothing, because Eloquent's write path stores a
+       `date` cast with a `00:00:00` time suffix regardless of the cast —
+       fixed with `->whereDate(...)` instead and recorded in
+       `.ai/rules/resources.md`, since it's a trap for any other date-column
+       comparison in this codebase.
+     - **Group/agency view**: an "Add travelers" bulk-repeater action is
+       visible only when `customer.type` is `agency`/`group_leader` (the
+       field already existed on `CustomerResource`, just unused by the
+       portal until now). Bulk document upload needed no separate gating —
+       the document-upload action above already accepts multiple files for
+       every customer type, which satisfies the same requirement without an
+       arbitrary type check.
+     - **Invoices & checkout redemption**: a new portal-only, read-only
+       `InvoiceResource` (list scoped to the customer's own non-`draft`
+       invoices, Outstanding/Paid tabs; view page shows items and payments)
+       plus "Enter promo code", "Redeem gift voucher", and "Download PDF"
+       (reusing the tenant panel's existing `pdf.invoice` view) actions.
+       `InvoicePolicy::viewAny`/`view` widened for `TenantUser|Customer`,
+       same pattern as `BookingPolicy`. The redemption math lives in two new
+       services, `App\Services\InvoicePromoRedemption` and
+       `InvoiceGiftVoucherRedemption`, both for the same Filament-testing
+       reason as the add-on service above. Per the architecture doc's
+       discount-resolution order: a promo code is meant to be "applied as a
+       separate line item", but `invoice_items.unit_price`/`.total` are
+       unsigned columns that cannot hold a negative discount row — rather
+       than a schema change with a wider blast radius for a should-have-
+       post-MVP feature, the actual discount is applied to the existing
+       `invoices.discount`/`.total` fields (which exist for exactly this),
+       and a zero-amount `"Promo code: X"` line item is still recorded as
+       both an audit trail and the guard against re-applying the same code
+       twice on one invoice. A gift voucher is "applied as payment credit,
+       not a discount" per the same doc note, which maps cleanly onto a
+       normal completed `Payment` row (method `gift_voucher`, new option
+       added to the existing method selects) — no schema change needed,
+       and it automatically feeds the invoice's existing
+       `recalculateStatus()`. `GiftVoucher.value` is treated as the
+       voucher's *remaining* balance, decremented on each (possibly
+       partial) redemption rather than a separate ledger table.
+     - **Notifications**: "Booking status change" and "document approval/
+       rejection" are now real mailed notifications (`BookingStatusChanged`,
+       `BookingDocumentReviewed`), triggered from `Booking`/`BookingDocument`
+       `updated` model events. "Payment reminder" is deliberately NOT built
+       here — it depends on the `reminders` table + a scheduling job, which
+       is entirely Phase 11 ("Communication & Automation") scope and hasn't
+       been started.
+     - **Explicitly out of scope for this phase** (by the roadmap's own
+       critical path, not an oversight): "Pay via PayPal" and "Pay via HBL"
+       are real payment-gateway integrations — Phase 10 owns gateway calls
+       and webhook verification; this phase only had to make sure the
+       portal invoice-view "shell" they'll attach to exists, which it now
+       does.
+     Covered by `tests/Feature/CustomerPortalDocumentsAndAddonsTest.php`,
+     `tests/Feature/CustomerPortalGroupAgencyTest.php`, and
+     `tests/Feature/CustomerPortalInvoicesTest.php`.
+   - **Phase 9 is now functionally complete** except the two payment
+     gateways, which are explicitly Phase 10's job (see the critical path
+     note above Phase 10). Everything else in the Customer Portal granular
+     checklist below is checked off.
 
 10. **Phase 10 — Payments.** Verified PayPal webhooks, HBL gateway integration,
     refunds, payment reconciliation. **Not started.** Backend (gateway calls,
-    webhook signature verification) only needs Phase 7's Invoice/Payment models
-    and can be built in parallel with Phase 9; the customer-facing "pay now"
-    button needs Phase 9's portal shell to exist.
+    webhook signature verification) only needs Phase 7's Invoice/Payment
+    models. The customer-facing "pay now" button's target — Phase 9's portal
+    invoice view (`App\Filament\Portal\Resources\InvoiceResource`) — now
+    exists, so this phase is unblocked and can start.
 
 11. **Phase 11 — Communication & Automation.** Reminder jobs (documents/
     traveler info/balance due, tenant-configurable schedule), tenant
@@ -323,7 +544,11 @@ it as a to-check/to-build item either way.
 
 **Audit Log Viewer**
 
-- [ ] Wire `LogsActivity` on tenant-scoped models (package installed, unused)
+- [x] Wire `LogsActivity` on the Phase 7 booking/billing models (`Booking`,
+      `BookingTraveler`, `BookingDocument`, `BookingAddon`, `Invoice`,
+      `InvoiceItem`, `Payment`) — other phases' models (Customer, Lead,
+      TenantUser, catalog, etc.) are not yet wired; extend as those phases'
+      own audit-logging needs come up, same pattern
 - [ ] List activity log entries
 - [ ] Filter by tenant / user / date
 
@@ -369,8 +594,9 @@ unconfirmed
       on both resources' `customer_id` select, gated by `CustomerPolicy`
 - [x] List / view / edit customer (contact history, past bookings)
 - [ ] Delete customer
-- [ ] Invite customer to portal (send invite email — needed before Phase 9 can
-      work end-to-end)
+- [x] Invite customer to portal (send invite email) — `inviteToPortal` table
+      action on `CustomerResource`, visible only while the customer has no
+      portal password yet
 
 **Package & Itinerary Management** — built
 
@@ -391,11 +617,18 @@ unconfirmed
 
 - [x] Create / list / edit / delete discount tier (pax range, percent/flat)
 
-**Promo Codes & Gift Vouchers** — not started (tables exist, no models/UI)
+**Promo Codes & Gift Vouchers** — management CRUD built; redemption built in
+Phase 9
 
-- [ ] Create / list / edit / delete promo code
-- [ ] Create gift voucher
-- [ ] List / redeem / expire gift voucher
+- [x] Create / list / edit / delete promo code — `PromoCodeResource`
+- [x] Create gift voucher — `GiftVoucherResource`
+- [x] List / edit / delete gift voucher — `GiftVoucherResource`
+- [x] Redeem gift voucher — happens at Phase 9 customer-portal checkout, via
+      `App\Services\InvoiceGiftVoucherRedemption` on the portal invoice view,
+      not a tenant-panel action
+- [ ] Auto-expire a gift voucher past `expires_at` (status currently only
+      changes via manual edit, or implicitly once `InvoiceGiftVoucherRedemption`
+      rejects an expired one at redemption time)
 
 **Add-on Services Catalog & Inventory** — built
 
@@ -406,11 +639,12 @@ unconfirmed
 **Booking Management** — partial
 
 - [x] Create / list / edit booking
-- [ ] View booking detail with nested travelers/payments (documents and
-      add-ons are already nested, as repeaters on `BookingResource`'s own
-      form; travelers and payments are still separate flat resources)
-- [x] Add traveler (works today, but as a standalone resource, not nested under
-      Booking)
+- [x] View booking detail with nested travelers/payments — `TravelersRelationManager`
+      (full CRUD) and a read-only `PaymentsRelationManager` on `BookingResource`
+      (documents/add-ons were already nested as repeaters on the form itself)
+- [x] Add traveler — nested `TravelersRelationManager` on `BookingResource`
+      (the standalone `BookingTravelerResource` also still exists, kept
+      deliberately rather than removed)
 - [x] Upload / review document — repeater on `BookingResource`'s form
       (doc type, file upload, approve/reject status + rejection reason)
 - [x] Add / manage add-on — repeater on `BookingResource`'s form (service,
@@ -423,7 +657,8 @@ unconfirmed
 - [x] Generate invoice from booking
 - [x] List / edit invoice
 - [x] Per-tenant invoice numbering (tested)
-- [ ] Itemized line-item management UI (`InvoiceItem` has no relation manager)
+- [x] Itemized line-item management UI — `ItemsRelationManager` on
+      `InvoiceResource`
 - [x] PDF export — `downloadPdf` table action on `InvoiceResource`
       (`resources/views/pdf/invoice.blade.php`), tested in
       `BillingModulesTest`
@@ -470,54 +705,98 @@ standalone module
 
 **Auth**
 
-- [ ] Invite email sent on booking creation
-- [ ] Set password on first login
-- [ ] Login
-- [ ] Forgot / reset password
+- [ ] Invite email sent automatically on booking creation — not built; a
+      manual `inviteToPortal` action on the tenant panel's `CustomerResource`
+      covers the same underlying need (staff explicitly triggers the email)
+      without assuming every new booking should auto-invite its customer
+- [x] Set password on first login — same invite link lands on Filament's
+      portal `ResetPassword` page; covered since a null password has nothing
+      to "log in to first" otherwise
+- [x] Login — panel-level login already existed; now actually reachable
+      end-to-end via the invite flow above
+- [x] Forgot / reset password — `PortalPanelProvider::passwordReset()` +
+      `authPasswordBroker('customers')`
 
-**Profile**
+**Profile** — built via `App\Filament\Portal\Pages\Profile` (extends
+Filament's own `EditProfile` auth page, wired via `PortalPanelProvider::
+profile()`)
 
-- [ ] View profile
-- [ ] Edit contact info / passport details
-- [ ] Upload avatar
+- [x] View profile
+- [x] Edit contact info / passport details — name/email/phone/address/
+      nationality/passport number, plus Filament's own password-change
+      section (current password required to change email or password)
+- [x] Upload avatar — new `avatar` column on `customers` (mirrors the
+      already-existing but never-wired-up `avatar` column on `TenantUser`/
+      `SuperAdmin`); `Customer` now implements Filament's `HasAvatar`
+      contract so the uploaded image actually shows in the portal's topbar,
+      not just sitting unused in storage
 
-**My Bookings**
+**My Bookings** — built via the portal's own `BookingResource` (list/view
+only — no create/edit/delete)
 
-- [ ] List current bookings
-- [ ] List past bookings (read-only)
+- [x] List current bookings — "Current" tab (`end_date` null or `>= today`)
+- [x] List past bookings (read-only) — "Past" tab (`end_date < today`); the
+      whole resource is read-only anyway, not just this tab
 
-**Booking Detail**
+**Booking Detail** — built as a Filament Infolist (not a form)
 
-- [ ] View itinerary (read-only)
-- [ ] View include/exclude list (read-only)
-- [ ] View traveler list
-- [ ] Notes/messages to staff
+- [x] View itinerary (read-only) — renders the `booked_itinerary` snapshot;
+      only populated today for bookings created via lead conversion, since
+      `BookingResource`'s own create form has no package/itinerary picker
+      (a pre-existing gap outside this phase's scope)
+- [x] View include/exclude list (read-only) — new `BookingIncludeExclude`
+      model + tenant-side repeater to actually populate it (see Phase 9 notes
+      above)
+- [x] View traveler list — name/DOB/document status; deliberately not
+      passport number
+- [x] Notes/messages to staff — minimal version: a single `customer_notes`
+      text field + an edit action, not a full threaded messaging system (see
+      Phase 9 notes above for why)
 
-**Document Upload**
+**Document Upload** — built via a header action on the portal booking detail
+page
 
-- [ ] Upload passport / visa / photo
-- [ ] View approval status
+- [x] Upload passport / visa / photo — `FileUpload::multiple()`, one action
+      covers uploading several documents at once
+- [x] View approval status — status badge + rejection reason, read-only
 
-**Add-on Services**
+**Add-on Services** — built via a header action + `App\Services\
+BookingAddonRequest`
 
-- [ ] Browse available add-ons
-- [ ] Request / purchase add-on (respecting inventory)
+- [x] Browse available add-ons — searchable select of active `services`
+- [x] Request / purchase add-on (respecting inventory) — limited-availability
+      services check/lock/increment `service_availability` inside a
+      transaction; unlimited ones just create the request
 
-**Group/Agency View** (conditional on `customer.type`)
+**Group/Agency View** (conditional on `customer.type`) — built
 
-- [ ] Bulk-add traveler rows
-- [ ] Bulk document upload
+- [x] Bulk-add traveler rows — "Add travelers" repeater action, visible only
+      for `agency`/`group_leader` customers
+- [x] Bulk document upload — the Document Upload action above already
+      accepts multiple files for every customer type; no separate gating
+      needed for the same requirement
 
-**Invoices & Payment**
+**Invoices & Payment** — built via a new portal-only, read-only
+`InvoiceResource`
 
-- [ ] View invoice history (read-only)
-- [ ] Enter promo code / redeem gift voucher at checkout
-- [ ] Pay via PayPal
-- [ ] Pay via HBL (later)
-- [ ] Download invoice PDF
+- [x] View invoice history (read-only) — Outstanding/Paid tabs, scoped to
+      the customer's own non-draft invoices
+- [x] Enter promo code / redeem gift voucher at checkout —
+      `App\Services\InvoicePromoRedemption` / `InvoiceGiftVoucherRedemption`
+      (see Phase 9 notes above for the discount-vs-payment-credit design)
+- [ ] Pay via PayPal — explicitly Phase 10 (gateway integration); this
+      phase only had to get the invoice-view "shell" ready, which it now is
+- [ ] Pay via HBL (later) — same as above, Phase 10
+- [x] Download invoice PDF — reuses the tenant panel's existing
+      `pdf.invoice` Blade view
 
 **Notifications**
 
-- [ ] Booking status change
-- [ ] Document approval / rejection
-- [ ] Payment reminder
+- [x] Booking status change — `App\Notifications\BookingStatusChanged`,
+      mailed on `Booking`'s `updated` event when `status` actually changed
+- [x] Document approval / rejection — `App\Notifications\
+      BookingDocumentReviewed`, mailed on `BookingDocument`'s `updated`
+      event
+- [ ] Payment reminder — deliberately deferred: this needs the `reminders`
+      table + a scheduling job, which is Phase 11 ("Communication &
+      Automation") scope and hasn't been started yet

@@ -5,10 +5,12 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class Payment extends Model
 {
-    use BelongsToTenant;
+    use BelongsToTenant, LogsActivity;
 
     protected $fillable = [
         'tenant_id',
@@ -49,5 +51,14 @@ class Payment extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName('payment')
+            ->logFillable()
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges();
     }
 }

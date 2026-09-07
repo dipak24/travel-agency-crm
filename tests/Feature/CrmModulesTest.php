@@ -1,6 +1,8 @@
 <?php
 
 use App\Filament\Tenant\Resources\BookingResource\Pages\CreateBooking;
+use App\Filament\Tenant\Resources\BookingResource\Pages\EditBooking;
+use App\Filament\Tenant\Resources\BookingResource\RelationManagers\TravelersRelationManager;
 use App\Filament\Tenant\Resources\RoleResource;
 use App\Models\Booking;
 use App\Models\BookingTraveler;
@@ -162,6 +164,34 @@ test('booking travelers are encrypted and isolated by tenant', function () {
     app(TenantContext::class)->set($otherTenant);
 
     expect(BookingTraveler::query()->find($traveler->id))->toBeNull();
+});
+
+test('a tenant staff member can add a traveler to a booking from its nested relation manager', function () {
+    $tenant = crmTenant('First Agency', 'first-agency');
+    $this->seed();
+
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $owner->assignRole($ownerRole);
+    $booking = Booking::query()->create([
+        'customer_id' => Customer::factory()->create()->id,
+        'trip_name' => 'Local trip',
+    ]);
+    $traveler = $booking->travelers()->create([
+        'name' => 'Nested Traveler',
+        'document_status' => 'pending',
+    ]);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(TravelersRelationManager::class, [
+        'ownerRecord' => $booking,
+        'pageClass' => EditBooking::class,
+    ])
+        ->assertOk()
+        ->assertActionExists(TestAction::make('create')->table())
+        ->assertCanSeeTableRecords([$traveler]);
 });
 
 test('a lead converts to a booking and reserves fixed departure capacity', function () {

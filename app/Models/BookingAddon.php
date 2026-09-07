@@ -5,10 +5,12 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class BookingAddon extends Model
 {
-    use BelongsToTenant;
+    use BelongsToTenant, LogsActivity;
 
     protected $fillable = [
         'tenant_id',
@@ -41,5 +43,14 @@ class BookingAddon extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName('booking_addon')
+            ->logFillable()
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges();
     }
 }

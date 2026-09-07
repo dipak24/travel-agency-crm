@@ -53,6 +53,7 @@ class PaymentResource extends Resource
                 'card' => 'Card',
                 'cash' => 'Cash',
                 'paypal' => 'PayPal',
+                'gift_voucher' => 'Gift voucher',
                 'other' => 'Other',
             ])->required(),
             Select::make('type')->options([

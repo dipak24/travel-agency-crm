@@ -9,10 +9,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class Invoice extends Model
 {
-    use BelongsToTenant, SoftDeletes, TracksInvoicePayments;
+    use BelongsToTenant, LogsActivity, SoftDeletes, TracksInvoicePayments;
 
     protected $fillable = [
         'tenant_id',
@@ -86,5 +88,14 @@ class Invoice extends Model
             ->count() + 1;
 
         return sprintf('%s-%s-%04d', $prefix, $year, $sequence);
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName('invoice')
+            ->logFillable()
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges();
     }
 }

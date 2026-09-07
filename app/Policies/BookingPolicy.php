@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Models\Booking;
+use App\Models\Customer;
 use App\Models\TenantUser;
 use App\Support\TenantContext;
 use Illuminate\Auth\Access\Response;
@@ -10,13 +11,24 @@ use Spatie\Permission\Models\Permission;
 
 class BookingPolicy
 {
-    public function viewAny(TenantUser $user): bool
+    /**
+     * Also used by the `customer` guard for the portal's read-only booking
+     * list/detail pages — a customer can always see their own booking list
+     * (the resource's own query scopes rows to `customer_id`), they just
+     * can't create/update/delete, which the portal `BookingResource`
+     * hardcodes closed rather than routing through this policy.
+     */
+    public function viewAny(TenantUser|Customer $user): bool
     {
-        return $this->canView($user);
+        return $user instanceof Customer || $this->canView($user);
     }
 
-    public function view(TenantUser $user, Booking $booking): bool
+    public function view(TenantUser|Customer $user, Booking $booking): bool
     {
+        if ($user instanceof Customer) {
+            return $user->tenant_id === $booking->tenant_id && $user->id === $booking->customer_id;
+        }
+
         return $this->sameTenant($user, $booking);
     }
 

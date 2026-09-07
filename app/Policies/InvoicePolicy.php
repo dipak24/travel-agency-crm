@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\TenantUser;
 use App\Support\TenantContext;
@@ -10,13 +11,21 @@ use Spatie\Permission\Models\Permission;
 
 class InvoicePolicy
 {
-    public function viewAny(TenantUser $user): bool
+    /**
+     * Also used by the `customer` guard for the portal's read-only invoice
+     * list/detail pages — see BookingPolicy for the same pattern.
+     */
+    public function viewAny(TenantUser|Customer $user): bool
     {
-        return $this->canManage($user);
+        return $user instanceof Customer || $this->canManage($user);
     }
 
-    public function view(TenantUser $user, Invoice $invoice): bool
+    public function view(TenantUser|Customer $user, Invoice $invoice): bool
     {
+        if ($user instanceof Customer) {
+            return $user->tenant_id === $invoice->tenant_id && $user->id === $invoice->customer_id;
+        }
+
         return $this->sameTenant($user, $invoice);
     }
 

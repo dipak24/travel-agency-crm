@@ -4,16 +4,21 @@ namespace App\Filament\Tenant\Resources;
 
 use App\Filament\Tenant\Resources\CustomerResource\Pages;
 use App\Models\Customer;
+use App\Notifications\CustomerPortalInvite;
 use App\Support\TenantContext;
 use BackedEnum;
+use Filament\Actions\Action;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\Rule;
 use UnitEnum;
 
@@ -77,7 +82,29 @@ class CustomerResource extends Resource
             TextColumn::make('phone'),
             TextColumn::make('type')->badge(),
             TextColumn::make('created_at')->dateTime()->sortable(),
-        ])->defaultSort('name');
+        ])
+            ->defaultSort('name')
+            ->recordActions([
+                Action::make('inviteToPortal')
+                    ->label('Invite to portal')
+                    ->icon('heroicon-o-envelope')
+                    ->color('gray')
+                    ->visible(fn (Customer $record): bool => $record->password === null
+                        && (bool) auth('tenant')->user()?->can('update', $record))
+                    ->requiresConfirmation()
+                    ->modalDescription('Email this customer a link to set up their portal password?')
+                    ->action(function (Customer $record): void {
+                        $token = Password::broker('customers')->createToken($record);
+                        $url = Filament::getPanel('portal')->getResetPasswordUrl($token, $record);
+
+                        $record->notify(new CustomerPortalInvite($url));
+
+                        Notification::make()
+                            ->title('Invite sent')
+                            ->success()
+                            ->send();
+                    }),
+            ]);
     }
 
     public static function getPages(): array
