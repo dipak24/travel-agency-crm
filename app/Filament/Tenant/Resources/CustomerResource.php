@@ -8,6 +8,9 @@ use App\Notifications\CustomerPortalInvite;
 use App\Support\TenantContext;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -104,6 +107,21 @@ class CustomerResource extends Resource
                             ->success()
                             ->send();
                     }),
+                ActionGroup::make([
+                    EditAction::make(),
+                    DeleteAction::make()
+                        ->before(function (Customer $record, DeleteAction $action): void {
+                            if ($record->bookings()->exists() || $record->invoices()->exists()) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('Cannot delete this customer')
+                                    ->body('This customer has existing bookings or invoices. Remove those first.')
+                                    ->send();
+
+                                $action->cancel();
+                            }
+                        }),
+                ]),
             ]);
     }
 

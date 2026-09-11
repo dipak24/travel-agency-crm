@@ -34,7 +34,6 @@ class Booking extends Model
     protected function casts(): array
     {
         return [
-            'booked_itinerary' => 'array',
             'start_date' => 'date',
             'end_date' => 'date',
             'pax_count' => 'integer',

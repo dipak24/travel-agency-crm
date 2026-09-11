@@ -60,7 +60,7 @@ class LeadConversion
                 'package_id' => $package?->id,
                 'fixed_departure_id' => $fixedDeparture?->id,
                 'trip_name' => $package?->name ?? $lockedLead->destination ?? 'Custom trip',
-                'booked_itinerary' => $package?->itinerary,
+                'booked_itinerary' => $this->renderPackageItineraryAsHtml($package),
                 'start_date' => $fixedDeparture?->start_date,
                 'end_date' => $fixedDeparture?->end_date,
                 'pax_count' => $lockedLead->pax_count,
@@ -76,5 +76,28 @@ class LeadConversion
 
             return $booking;
         });
+    }
+
+    /**
+     * The package's own itinerary is only ever a starting point — this booking's itinerary is
+     * free text staff can diverge from it (or write from scratch for a custom, package-less trip),
+     * so it's rendered into plain HTML here rather than kept as a structured snapshot.
+     */
+    private function renderPackageItineraryAsHtml(?Package $package): ?string
+    {
+        $days = $package?->itinerary;
+
+        if (blank($days)) {
+            return null;
+        }
+
+        return collect($days)
+            ->map(fn (array $day, int $index): string => sprintf(
+                '<p><strong>Day %d: %s</strong></p><p>%s</p>',
+                $index + 1,
+                e($day['title'] ?? ''),
+                e($day['description'] ?? ''),
+            ))
+            ->implode('');
     }
 }

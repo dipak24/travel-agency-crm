@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('slug');
             $table->string('package_code');
             $table->text('description')->nullable();
-            $table->json('itinerary')->nullable();
+            $table->jsonb('itinerary')->nullable();
             $table->unsignedInteger('base_price')->default(0);
             $table->unsignedInteger('sales_price')->default(0);
             $table->unsignedSmallInteger('duration_days');

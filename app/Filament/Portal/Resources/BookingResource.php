@@ -81,13 +81,7 @@ class BookingResource extends Resource
                 ->columns(3),
             Section::make('Itinerary')
                 ->schema([
-                    RepeatableEntry::make('booked_itinerary')
-                        ->label('')
-                        ->schema([
-                            TextEntry::make('title')->weight('bold'),
-                            TextEntry::make('description'),
-                        ])
-                        ->contained(false),
+                    TextEntry::make('booked_itinerary')->label('')->html(),
                 ])
                 ->visible(fn (Booking $record): bool => filled($record->booked_itinerary)),
             Section::make('What\'s included / excluded')

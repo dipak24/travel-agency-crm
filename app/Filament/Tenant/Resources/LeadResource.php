@@ -6,6 +6,9 @@ use App\Filament\Tenant\Resources\LeadResource\Pages;
 use App\Models\Lead;
 use App\Models\TenantUser;
 use BackedEnum;
+use Filament\Actions\ActionGroup;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -13,6 +16,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use UnitEnum;
 
@@ -68,14 +72,21 @@ class LeadResource extends Resource
             TextColumn::make('assignedStaff.name')->label('Assigned to'),
             TextColumn::make('follow_up_date')->date()->sortable(),
         ])->filters([
-            \Filament\Tables\Filters\SelectFilter::make('status')->options([
+            SelectFilter::make('status')->options([
                 'new' => 'New',
                 'contacted' => 'Contacted',
                 'negotiating' => 'Negotiating',
                 'won' => 'Won',
                 'lost' => 'Lost',
             ]),
-        ])->defaultSort('follow_up_date');
+        ])
+            ->recordActions([
+                ActionGroup::make([
+                    EditAction::make(),
+                    DeleteAction::make(),
+                ]),
+            ])
+            ->defaultSort('follow_up_date');
     }
 
     public static function getPages(): array

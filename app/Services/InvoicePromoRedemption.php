@@ -43,6 +43,16 @@ class InvoicePromoRedemption
             throw new LogicException('That promo code has reached its usage limit.');
         }
 
+        $restrictedPackageIds = $promo->packages()->pluck('packages.id');
+
+        if ($restrictedPackageIds->isNotEmpty()) {
+            $packageId = $invoice->booking?->package_id;
+
+            if ($packageId === null || ! $restrictedPackageIds->contains($packageId)) {
+                throw new LogicException('That promo code does not apply to this booking\'s package.');
+            }
+        }
+
         $lineDescription = "Promo code: {$code}";
 
         if ($invoice->items()->where('description', $lineDescription)->exists()) {

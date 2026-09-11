@@ -5,6 +5,7 @@ namespace App\Filament\Tenant\Resources;
 use App\Filament\Tenant\Resources\GiftVoucherResource\Pages;
 use App\Models\GiftVoucher;
 use BackedEnum;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DateTimePicker;
@@ -16,6 +17,12 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use UnitEnum;
 
+/**
+ * Gift vouchers are bought by the customer (see App\Filament\Portal\Pages\BuyGiftVoucher and
+ * App\Services\GiftVoucherPurchase) — tenant staff never manually issue one, so this resource is
+ * deliberately view/support-only: no create page, and code/value/currency/issued-to are locked on
+ * the edit form since they're tied to the actual purchase invoice, not staff-editable data entry.
+ */
 class GiftVoucherResource extends Resource
 {
     protected static ?string $model = GiftVoucher::class;
@@ -28,24 +35,27 @@ class GiftVoucherResource extends Resource
 
     protected static ?int $navigationSort = 7;
 
+    public static function canCreate(): bool
+    {
+        return false;
+    }
+
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
-            TextInput::make('code')->required()->maxLength(255),
-            TextInput::make('value')->label('Value (minor units)')->numeric()->integer()->minValue(0)->required()->default(0),
-            TextInput::make('currency')->default('USD')->required()->length(3),
+            TextInput::make('code')->disabled(),
+            TextInput::make('value')->label('Value (minor units)')->disabled(),
+            TextInput::make('currency')->disabled(),
             Select::make('issued_to')
                 ->label('Issued to')
                 ->relationship('issuedTo', 'name')
-                ->searchable()
-                ->preload()
-                ->helperText('Optional — leave blank for an unassigned voucher.'),
+                ->disabled(),
             Select::make('status')->options([
                 'unredeemed' => 'Unredeemed',
                 'partially_redeemed' => 'Partially redeemed',
                 'redeemed' => 'Redeemed',
                 'expired' => 'Expired',
-            ])->default('unredeemed')->required(),
+            ])->required(),
             DateTimePicker::make('expires_at')->native(false),
         ])->columns(2);
     }
@@ -61,14 +71,18 @@ class GiftVoucherResource extends Resource
             TextColumn::make('expires_at')->label('Expires')->dateTime()->placeholder('Never')->sortable(),
         ])
             ->defaultSort('created_at', 'desc')
-            ->recordActions([EditAction::make(), DeleteAction::make()]);
+            ->recordActions([
+                ActionGroup::make([
+                    EditAction::make(),
+                    DeleteAction::make(),
+                ]),
+            ]);
     }
 
     public static function getPages(): array
     {
         return [
             'index' => Pages\ListGiftVouchers::route('/'),
-            'create' => Pages\CreateGiftVoucher::route('/create'),
             'edit' => Pages\EditGiftVoucher::route('/{record}/edit'),
         ];
     }

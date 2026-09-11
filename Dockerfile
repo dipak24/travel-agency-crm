@@ -17,13 +17,14 @@ ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     libfreetype6-dev \
+    libgmp-dev \
     libicu-dev \
     libjpeg62-turbo-dev \
     libpng-dev \
     libpq-dev \
     libzip-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j"$(nproc)" exif gd intl opcache pdo_pgsql zip \
+    && docker-php-ext-install -j"$(nproc)" exif gd gmp intl opcache pdo_pgsql zip \
     && a2enmod rewrite headers \
     && rm -rf /var/lib/apt/lists/*
 

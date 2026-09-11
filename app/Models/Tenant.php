@@ -39,6 +39,11 @@ class Tenant extends Model
         return $this->hasMany(TenantSubscription::class);
     }
 
+    public function paymentGateways(): HasMany
+    {
+        return $this->hasMany(TenantPaymentGateway::class);
+    }
+
     public function activeSubscription(): HasOne
     {
         // Tenant-owned models are scoped to the current TenantContext by

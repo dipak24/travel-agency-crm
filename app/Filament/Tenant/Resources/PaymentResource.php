@@ -5,16 +5,22 @@ namespace App\Filament\Tenant\Resources;
 use App\Filament\Tenant\Resources\PaymentResource\Pages;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Services\PaymentGateways\PaymentGatewayResolver;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
+use RuntimeException;
 use UnitEnum;
 
 class PaymentResource extends Resource
@@ -90,6 +96,47 @@ class PaymentResource extends Resource
                         default => 'info',
                     }),
                 TextColumn::make('paid_at')->dateTime('M j, Y H:i')->sortable(),
+                IconColumn::make('reconciled_at')->label('Reconciled')->boolean()
+                    ->getStateUsing(fn (Payment $record): bool => $record->reconciled_at !== null),
+            ])
+            ->filters([
+                TernaryFilter::make('reconciled_at')
+                    ->label('Reconciliation')
+                    ->trueLabel('Reconciled')
+                    ->falseLabel('Unreconciled')
+                    ->placeholder('All payments')
+                    ->queries(
+                        true: fn ($query) => $query->whereNotNull('reconciled_at'),
+                        false: fn ($query) => $query->whereNull('reconciled_at'),
+                    ),
+            ])
+            ->recordActions([
+                Action::make('toggleReconciled')
+                    ->label(fn (Payment $record): string => $record->reconciled_at ? 'Mark unreconciled' : 'Mark reconciled')
+                    ->icon('heroicon-o-check-badge')
+                    ->color('gray')
+                    ->visible(fn (Payment $record): bool => $record->status === 'completed')
+                    ->action(fn (Payment $record) => $record->update(['reconciled_at' => $record->reconciled_at ? null : now()])),
+                Action::make('refund')
+                    ->label('Refund')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->visible(fn (Payment $record): bool => in_array($record->method, app(PaymentGatewayResolver::class)->keys(), true)
+                        && $record->type !== 'refund'
+                        && $record->status === 'completed'
+                        && auth('tenant')->user()?->can('refund', $record))
+                    ->action(function (Payment $record): void {
+                        try {
+                            app(PaymentGatewayResolver::class)->for($record->method)->refund($record);
+                        } catch (RuntimeException $e) {
+                            Notification::make()->title('Refund failed')->body($e->getMessage())->danger()->send();
+
+                            return;
+                        }
+
+                        Notification::make()->title('Refund recorded')->success()->send();
+                    }),
             ])
             ->defaultSort('created_at', 'desc');
     }

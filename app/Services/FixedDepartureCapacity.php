@@ -35,4 +35,33 @@ class FixedDepartureCapacity
             return $lockedDeparture;
         });
     }
+
+    /**
+     * Releases slots previously reserved via `reserve()` — used when a booking against this
+     * departure is cancelled. Never re-opens a departure that was explicitly `closed`/`cancelled`
+     * on its own terms, only flips a `full` departure back to `open` once it has room again.
+     */
+    public function release(FixedDeparture $departure, int $pax): FixedDeparture
+    {
+        if ($pax < 1) {
+            throw new LogicException('At least one slot must be released.');
+        }
+
+        return DB::transaction(function () use ($departure, $pax): FixedDeparture {
+            $lockedDeparture = FixedDeparture::query()
+                ->whereKey($departure->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $lockedDeparture->booked_slots = max(0, $lockedDeparture->booked_slots - $pax);
+
+            if ($lockedDeparture->status === 'full' && $lockedDeparture->booked_slots < $lockedDeparture->total_slots) {
+                $lockedDeparture->status = 'open';
+            }
+
+            $lockedDeparture->save();
+
+            return $lockedDeparture;
+        });
+    }
 }

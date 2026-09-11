@@ -22,6 +22,7 @@ class Payment extends Model
         'status',
         'transaction_ref',
         'paid_at',
+        'reconciled_at',
     ];
 
     protected static function booted(): void
@@ -40,6 +41,7 @@ class Payment extends Model
         return [
             'amount' => 'integer',
             'paid_at' => 'datetime',
+            'reconciled_at' => 'datetime',
         ];
     }
 

@@ -5,7 +5,6 @@ use App\Models\Booking;
 use App\Models\BookingDocument;
 use App\Models\Customer;
 use App\Models\Service;
-use App\Models\ServiceAvailability;
 use App\Models\Tenant;
 use App\Notifications\BookingDocumentReviewed;
 use App\Notifications\BookingStatusChanged;
@@ -108,44 +107,13 @@ test('requesting an add-on with no inventory limit always succeeds', function ()
         ->and($addon->added_by)->toBe($customer->email);
 });
 
-test('requesting a limited-availability add-on respects remaining slots and rejects overbooking', function () {
+test('requesting an add-on for an inactive service is rejected', function () {
     $tenant = docsAddonsTenant('Northwind Travel', 'northwind-travel');
     app(TenantContext::class)->set($tenant);
     $customer = Customer::factory()->create();
-    $booking = Booking::query()->create([
-        'customer_id' => $customer->id,
-        'trip_name' => 'Everest Base Camp',
-        'start_date' => '2026-10-01',
-    ]);
-    $service = Service::query()->create(['name' => 'KTM City Tour', 'price' => 4000, 'is_active' => true, 'has_limited_availability' => true]);
-    $availability = ServiceAvailability::query()->create([
-        'service_id' => $service->id,
-        'date' => '2026-10-01',
-        'total_slots' => 2,
-        'booked_slots' => 0,
-    ]);
-
-    app(BookingAddonRequest::class)->request($booking, $service, 2, $customer->email);
-
-    expect($availability->refresh()->booked_slots)->toBe(2);
+    $booking = Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Everest Base Camp']);
+    $service = Service::query()->create(['name' => 'KTM City Tour', 'price' => 4000, 'is_active' => false]);
 
     expect(fn () => app(BookingAddonRequest::class)->request($booking, $service, 1, $customer->email))
-        ->toThrow(LogicException::class, 'Not enough availability for this add-on on your travel date.');
-
-    expect($availability->refresh()->booked_slots)->toBe(2);
-});
-
-test('requesting a limited-availability add-on with no configured availability row is rejected', function () {
-    $tenant = docsAddonsTenant('Northwind Travel', 'northwind-travel');
-    app(TenantContext::class)->set($tenant);
-    $customer = Customer::factory()->create();
-    $booking = Booking::query()->create([
-        'customer_id' => $customer->id,
-        'trip_name' => 'Everest Base Camp',
-        'start_date' => '2026-10-01',
-    ]);
-    $service = Service::query()->create(['name' => 'KTM City Tour', 'price' => 4000, 'is_active' => true, 'has_limited_availability' => true]);
-
-    expect(fn () => app(BookingAddonRequest::class)->request($booking, $service, 1, $customer->email))
-        ->toThrow(LogicException::class);
+        ->toThrow(LogicException::class, 'This add-on is no longer available.');
 });

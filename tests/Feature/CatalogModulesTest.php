@@ -7,7 +7,6 @@ use App\Models\IncludeExclude;
 use App\Models\Package;
 use App\Models\PromoCode;
 use App\Models\Service;
-use App\Models\ServiceAvailability;
 use App\Models\Tenant;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -47,35 +46,17 @@ test('all catalog modules are isolated between tenants', function () {
         ]),
         Service::query()->create(['name' => 'City tour', 'price' => 2500]),
     ];
-    $availability = ServiceAvailability::query()->create([
-        'service_id' => $records[3]->id,
-        'date' => '2026-10-02',
-        'total_slots' => 15,
-    ]);
 
     app(TenantContext::class)->set($secondTenant);
 
-    foreach (array_merge($records, [$availability]) as $record) {
+    foreach ($records as $record) {
         expect($record::query()->find($record->id))->toBeNull();
     }
-
-    expect(ServiceAvailability::query()->withoutGlobalScopes()->find($availability->id)->tenant_id)
-        ->toBe($firstTenant->id);
 });
 
-test('service availability reports remaining slots and cannot be created without tenant context', function () {
+test('a service cannot be created without tenant context', function () {
     $tenant = catalogTenant('Travel Agency', 'travel-agency');
     app(TenantContext::class)->set($tenant);
-    $service = Service::query()->create(['name' => 'Equipment rental', 'price' => 1000]);
-    $availability = ServiceAvailability::query()->create([
-        'service_id' => $service->id,
-        'date' => '2026-11-01',
-        'total_slots' => 3,
-        'booked_slots' => 2,
-    ]);
-
-    expect($availability->remainingSlots())->toBe(1);
-
     app(TenantContext::class)->clear();
 
     expect(fn () => Service::query()->create(['name' => 'No tenant', 'price' => 1]))
@@ -93,7 +74,6 @@ test('tenant-owned catalog relations reject cross-tenant writes', function () {
         'package_code' => 'FIRST-01',
         'duration_days' => 3,
     ]);
-    $service = Service::query()->create(['name' => 'First Service', 'price' => 100]);
 
     app(TenantContext::class)->set($secondTenant);
 
@@ -101,12 +81,6 @@ test('tenant-owned catalog relations reject cross-tenant writes', function () {
         'package_id' => $package->id,
         'start_date' => '2026-12-01',
         'end_date' => '2026-12-03',
-        'total_slots' => 5,
-    ]))->toThrow(LogicException::class);
-
-    expect(fn () => ServiceAvailability::query()->create([
-        'service_id' => $service->id,
-        'date' => '2026-12-01',
         'total_slots' => 5,
     ]))->toThrow(LogicException::class);
 

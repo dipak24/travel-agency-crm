@@ -37,6 +37,11 @@ class PaymentPolicy
         return $this->sameTenant($user, $payment, 'delete invoices');
     }
 
+    public function refund(TenantUser $user, Payment $payment): bool
+    {
+        return $this->sameTenant($user, $payment, 'update invoices');
+    }
+
     private function canManage(TenantUser $user): bool
     {
         $this->setTenantContext($user);

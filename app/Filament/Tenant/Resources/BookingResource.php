@@ -8,19 +8,24 @@ use App\Filament\Tenant\Resources\BookingResource\RelationManagers\TravelersRela
 use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\IncludeExclude;
+use App\Services\FixedDepartureCapacity;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
+use Filament\Actions\EditAction;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 class BookingResource extends Resource
@@ -34,6 +39,20 @@ class BookingResource extends Resource
     protected static UnitEnum|string|null $navigationGroup = 'CRM';
 
     protected static ?int $navigationSort = 5;
+
+    /**
+     * @return array<string, string>
+     */
+    public static function documentTypes(): array
+    {
+        return [
+            'passport' => 'Passport',
+            'pp_photo' => 'PP size photo',
+            'visa' => 'Visa',
+            'insurance' => 'Insurance',
+            'other' => 'Other documents',
+        ];
+    }
 
     public static function form(Schema $schema): Schema
     {
@@ -68,68 +87,81 @@ class BookingResource extends Resource
                         ->visibleOn('edit')
                         ->helperText('Read-only — written by the customer from their portal.'),
                 ])
-                ->columns(1),
+                ->columns(2)
+                ->columnSpanFull(),
+            Section::make('Itinerary')
+                ->description('Free-form — a package\'s own itinerary is only a starting point and often diverges from what was actually booked (or there may be no package at all, e.g. a custom private trip).')
+                ->schema([
+                    RichEditor::make('booked_itinerary')
+                        ->label('')
+                        ->toolbarButtons([
+                            ['bold', 'italic', 'underline', 'strike'],
+                            ['h2', 'h3'],
+                            ['bulletList', 'orderedList', 'blockquote'],
+                            ['undo', 'redo'],
+                        ])
+                        ->columnSpanFull(),
+                ])
+                ->columnSpanFull(),
             Section::make('Include / exclude list')
                 ->schema([
-                    Repeater::make('includeExcludes')
-                        ->relationship('includeExcludes')
-                        ->schema([
-                            Select::make('type')->options([
-                                'include' => 'Include',
-                                'exclude' => 'Exclude',
-                            ])->required(),
-                            Select::make('include_exclude_id')
-                                ->label('From catalog (optional)')
-                                ->relationship('includeExclude', 'title')
-                                ->searchable()
-                                ->preload()
-                                ->live()
-                                ->afterStateUpdated(function (?string $state, Set $set): void {
-                                    if (! $state) {
-                                        return;
-                                    }
-
-                                    $catalogItem = IncludeExclude::query()->find($state);
-
-                                    if ($catalogItem) {
-                                        $set('type', $catalogItem->type);
-                                        $set('title', $catalogItem->title);
-                                        $set('description', $catalogItem->description);
-                                    }
-                                })
-                                ->helperText('Prefills title/description as a snapshot — editing the catalog item later won\'t change this booking.'),
-                            TextInput::make('title')->required()->maxLength(255),
-                            Textarea::make('description')->rows(2),
-                            TextInput::make('sort_order')->numeric()->integer()->default(0),
-                        ])
-                        ->itemLabel(fn (array $state): ?string => $state['title'] ?? null)
-                        ->addActionLabel('Add item')
-                        ->defaultItems(0)
-                        ->columns(2),
-                ]),
-            Section::make('Travel documents')
+                    CheckboxList::make('include_exclude_selection')
+                        ->label('')
+                        ->options(fn (): array => IncludeExclude::query()->orderBy('sort_order')->get()
+                            ->mapWithKeys(fn (IncludeExclude $item): array => [$item->id => "{$item->title} ({$item->type})"])
+                            ->all())
+                        ->descriptions(fn (): array => IncludeExclude::query()->orderBy('sort_order')->get()
+                            ->mapWithKeys(fn (IncludeExclude $item): array => [$item->id => (string) $item->description])
+                            ->all())
+                        ->afterStateHydrated(function (CheckboxList $component, ?Model $record): void {
+                            $component->state($record?->includeExcludes()->pluck('include_exclude_id')->filter()->all() ?? []);
+                        })
+                        ->dehydrated(false)
+                        ->helperText('Check every catalog item that applies to this booking. Checking an item snapshots its title/description onto the booking — editing the catalog item later won\'t change this booking.')
+                        ->columns(2)
+                        ->columnSpanFull(),
+                ])
+                ->columnSpanFull(),
+            Section::make('Upload travel documents')
+                ->description('One file (or several) per document type. Accepted: PDF, JPG, PNG. Min 10 KB, max 5 MB per file.')
+                ->schema(collect(static::documentTypes())
+                    ->map(fn (string $label, string $docType): FileUpload => FileUpload::make("document_files.{$docType}")
+                        ->label($label)
+                        ->disk('local')
+                        ->directory('booking-documents')
+                        ->visibility('private')
+                        ->multiple()
+                        ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'])
+                        ->minSize(10)
+                        ->maxSize(5120)
+                        ->helperText('Max 5 MB, min 10 KB per file.')
+                        ->afterStateHydrated(function (FileUpload $component, ?Model $record) use ($docType): void {
+                            $component->state($record?->documents()->where('doc_type', $docType)->pluck('file_path')->all() ?? []);
+                        })
+                        ->dehydrated(false))
+                    ->values()
+                    ->all())
+                ->columns(2)
+                ->columnSpanFull(),
+            Section::make('Uploaded documents — review')
+                ->description('Approve or reject an already-uploaded document. New files are added above, per document type.')
                 ->schema([
                     Repeater::make('documents')
                         ->relationship('documents')
-                        ->mutateRelationshipDataBeforeCreateUsing(fn (array $data): array => [
-                            ...$data,
-                            'uploaded_by' => optional(auth('tenant')->user())->email ?? 'staff',
-                        ])
+                        ->label('')
                         ->schema([
-                            Select::make('doc_type')->options([
-                                'passport' => 'Passport',
-                                'pp_photo' => 'PP size photo',
-                                'visa' => 'Visa',
-                                'insurance' => 'Insurance',
-                                'other' => 'Other documents',
-                            ])->required(),
+                            Select::make('doc_type')
+                                ->label('Type')
+                                ->options(static::documentTypes())
+                                ->disabled()
+                                ->dehydrated(),
                             FileUpload::make('file_path')
-                                ->label('Document file')
+                                ->label('File')
                                 ->disk('local')
                                 ->directory('booking-documents')
                                 ->visibility('private')
-                                ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'])
-                                ->required(),
+                                ->disabled()
+                                ->dehydrated(),
                             Select::make('status')->options([
                                 'pending' => 'Pending',
                                 'approved' => 'Approved',
@@ -137,15 +169,20 @@ class BookingResource extends Resource
                             ])->default('pending')->required(),
                             TextInput::make('rejection_reason')->label('Rejection reason')->maxLength(255),
                         ])
-                        ->itemLabel(fn (array $state): ?string => $state['doc_type'] ?? 'Document')
-                        ->addActionLabel('Add document')
+                        ->itemLabel(fn (array $state): ?string => static::documentTypes()[$state['doc_type'] ?? ''] ?? 'Document')
+                        ->addable(false)
+                        ->deletable(false)
                         ->reorderable(false)
-                        ->defaultItems(0),
-                ]),
+                        ->defaultItems(0)
+                        ->columns(4)
+                        ->columnSpanFull(),
+                ])
+                ->columnSpanFull(),
             Section::make('Add-ons')
                 ->schema([
                     Repeater::make('addons')
                         ->relationship('addons')
+                        ->label('')
                         ->mutateRelationshipDataBeforeCreateUsing(fn (array $data): array => [
                             ...$data,
                             'added_by' => optional(auth('tenant')->user())->email ?? 'staff',
@@ -164,8 +201,10 @@ class BookingResource extends Resource
                         ->itemLabel(fn (array $state): ?string => $state['service_id'] ? 'Add-on' : 'Add-on')
                         ->addActionLabel('Add add-on')
                         ->reorderable(false)
-                        ->defaultItems(0),
-                ]),
+                        ->defaultItems(0)
+                        ->columnSpanFull(),
+                ])
+                ->columnSpanFull(),
         ]);
     }
 
@@ -178,7 +217,27 @@ class BookingResource extends Resource
             TextColumn::make('pax_count')->label('Pax'),
             TextColumn::make('total_amount')->label('Total (minor units)')->numeric(),
             TextColumn::make('status')->badge()->sortable(),
-        ])->defaultSort('created_at', 'desc');
+        ])
+            ->defaultSort('created_at', 'desc')
+            ->recordActions([
+                Action::make('cancelBooking')
+                    ->label('Cancel booking')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalDescription('This releases any fixed-departure slot the booking was holding. It does not automatically cancel or refund existing invoices/payments.')
+                    ->visible(fn (Booking $record): bool => ! in_array($record->status, ['cancelled', 'completed'], true))
+                    ->action(function (Booking $record): void {
+                        if ($record->fixed_departure_id) {
+                            app(FixedDepartureCapacity::class)->release($record->fixedDeparture, $record->pax_count);
+                        }
+
+                        $record->update(['status' => 'cancelled']);
+                    }),
+                ActionGroup::make([
+                    EditAction::make(),
+                ]),
+            ]);
     }
 
     public static function getRelations(): array

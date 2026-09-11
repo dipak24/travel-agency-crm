@@ -18,7 +18,7 @@ business schema:
 - CRM and booking tables: `leads`, `bookings`, `booking_travelers`,
   `booking_documents`, `booking_addons`, and `booking_include_exclude`.
 - Pricing and operations tables: `promo_codes`, `gift_vouchers`,
-  `booking_waitlist`, `reminders`, `services`, and `service_availability`.
+  `booking_waitlist`, `reminders`, and `services`.
 - Billing tables: `invoices`, `invoice_items`, and `payments`.
 - Public and communication tables: `public_lead_pages`, email template catalogs,
   campaigns, recipients, unsubscribes, and notifications.
@@ -296,7 +296,7 @@ The main domain groups are:
 | Group                | Tables                                                                                                                                                                     |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Identity and tenancy | `tenants`, `super_admins`, `tenant_users`, `customers`, `subscription_plans`, `tenant_subscriptions`                                                                       |
-| Travel catalog       | `packages`, `include_excludes`, `fixed_departures`, `group_discount_tiers`, `services`, `service_availability`                                                             |
+| Travel catalog       | `packages`, `include_excludes`, `fixed_departures`, `group_discount_tiers`, `services`                                                                                     |
 | CRM and bookings     | `leads`, `bookings`, `booking_travelers`, `booking_documents`, `booking_addons`, `booking_include_exclude`, `booking_waitlist`                                             |
 | Pricing and billing  | `promo_codes`, `gift_vouchers`, `invoices`, `invoice_items`, `payments`                                                                                                    |
 | Public and reminders | `public_lead_pages`, `reminders`                                                                                                                                           |

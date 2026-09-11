@@ -13,6 +13,7 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Tenant;
 use App\Models\TenantUser;
+use App\Notifications\InvoiceEmailed;
 use App\Policies\InvoicePolicy;
 use App\Policies\PaymentPolicy;
 use App\Support\TenantContext;
@@ -20,6 +21,7 @@ use Database\Seeders\PermissionSeeder;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
@@ -265,6 +267,36 @@ test('a tenant staff member can download an invoice as a PDF', function () {
     Livewire::actingAs($owner, 'tenant')->test(ListInvoices::class)
         ->callAction(TestAction::make('downloadPdf')->table($invoice))
         ->assertFileDownloaded("{$invoice->invoice_no}.pdf");
+});
+
+test('a tenant staff member can email an invoice PDF to the customer', function () {
+    Notification::fake();
+
+    $tenant = billingTenant('Northwind Travel', 'northwind-travel');
+    $this->seed();
+
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $owner->assignRole($ownerRole);
+
+    $customer = Customer::factory()->create(['email' => 'traveler@example.com']);
+    $booking = Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Alpine Escape']);
+    $invoice = Invoice::query()->create([
+        'booking_id' => $booking->id,
+        'customer_id' => $customer->id,
+        'amount' => 150000,
+        'total' => 150000,
+        'currency' => 'USD',
+        'status' => 'issued',
+    ]);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(ListInvoices::class)
+        ->callAction(TestAction::make('emailInvoice')->table($invoice));
+
+    Notification::assertSentTo($customer, InvoiceEmailed::class, fn (InvoiceEmailed $notification): bool => $notification->invoice->is($invoice));
 });
 
 test('a tenant staff member can create a new guest customer inline while invoicing a booking', function () {

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use App\Models\Concerns\TracksInvoicePayments;
+use App\Services\GiftVoucherPurchase;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -27,6 +28,7 @@ class Invoice extends Model
         'total',
         'currency',
         'status',
+        'purpose',
         'due_date',
         'issued_by',
     ];
@@ -36,6 +38,12 @@ class Invoice extends Model
         static::creating(function (self $invoice): void {
             if (blank($invoice->invoice_no)) {
                 $invoice->invoice_no = $invoice->generateInvoiceNumber();
+            }
+        });
+
+        static::updated(function (self $invoice): void {
+            if ($invoice->wasChanged('status') && $invoice->status === 'paid' && $invoice->purpose === 'gift_voucher_purchase') {
+                app(GiftVoucherPurchase::class)->fulfill($invoice);
             }
         });
     }

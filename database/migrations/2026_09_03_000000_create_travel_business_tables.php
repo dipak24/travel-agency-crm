@@ -34,7 +34,7 @@ return new class extends Migration
             $table->foreignId('package_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('fixed_departure_id')->nullable()->constrained()->nullOnDelete();
             $table->string('trip_name');
-            $table->json('booked_itinerary')->nullable();
+            $table->text('booked_itinerary')->nullable();
             $table->text('description')->nullable();
             $table->date('start_date')->nullable();
             $table->date('end_date')->nullable();
@@ -83,21 +83,8 @@ return new class extends Migration
             $table->unsignedBigInteger('price')->default(0);
             $table->string('currency', 3)->default('USD');
             $table->boolean('is_active')->default(true);
-            $table->boolean('has_limited_availability')->default(false);
             $table->timestamps();
             $table->index(['tenant_id', 'is_active']);
-        });
-
-        Schema::create('service_availability', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('service_id')->constrained()->cascadeOnDelete();
-            $table->date('date');
-            $table->unsignedInteger('total_slots');
-            $table->unsignedInteger('booked_slots')->default(0);
-            $table->timestamps();
-            $table->unique(['service_id', 'date']);
-            $table->index(['tenant_id', 'date']);
         });
 
         Schema::create('booking_addons', function (Blueprint $table): void {
@@ -139,6 +126,14 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             $table->unique(['tenant_id', 'code']);
+        });
+
+        Schema::create('package_promo_code', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('package_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('promo_code_id')->constrained()->cascadeOnDelete();
+            $table->timestamps();
+            $table->unique(['package_id', 'promo_code_id']);
         });
 
         Schema::create('gift_vouchers', function (Blueprint $table): void {
@@ -198,7 +193,7 @@ return new class extends Migration
         Schema::create('invoices', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('booking_id')->constrained()->restrictOnDelete();
+            $table->foreignId('booking_id')->nullable()->constrained()->restrictOnDelete();
             $table->foreignId('customer_id')->constrained()->restrictOnDelete();
             $table->string('invoice_no');
             $table->unsignedBigInteger('amount')->default(0);
@@ -207,6 +202,7 @@ return new class extends Migration
             $table->unsignedBigInteger('total')->default(0);
             $table->string('currency', 3)->default('USD');
             $table->string('status')->default('draft');
+            $table->string('purpose')->nullable();
             $table->date('due_date')->nullable();
             $table->foreignId('issued_by')->nullable()->constrained('tenant_users')->nullOnDelete();
             $table->timestamps();
@@ -227,6 +223,12 @@ return new class extends Migration
             $table->index(['tenant_id', 'invoice_id']);
         });
 
+        // gift_vouchers is created earlier in this file, before `invoices` exists — the FK to
+        // invoices has to be added here instead of inline in that Schema::create() block.
+        Schema::table('gift_vouchers', function (Blueprint $table): void {
+            $table->foreignId('source_invoice_id')->nullable()->after('issued_to')->constrained('invoices')->nullOnDelete();
+        });
+
         Schema::create('payments', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
@@ -238,6 +240,7 @@ return new class extends Migration
             $table->string('status')->default('pending');
             $table->string('transaction_ref')->nullable();
             $table->timestamp('paid_at')->nullable();
+            $table->timestamp('reconciled_at')->nullable();
             $table->timestamps();
             $table->index(['tenant_id', 'invoice_id', 'status']);
             $table->unique(['tenant_id', 'transaction_ref']);
@@ -360,7 +363,7 @@ return new class extends Migration
         Schema::dropIfExists('booking_waitlist');
         Schema::dropIfExists('booking_include_exclude');
         Schema::dropIfExists('booking_addons');
-        Schema::dropIfExists('service_availability');
+        Schema::dropIfExists('package_promo_code');
         Schema::dropIfExists('services');
         Schema::dropIfExists('booking_documents');
         Schema::dropIfExists('booking_travelers');

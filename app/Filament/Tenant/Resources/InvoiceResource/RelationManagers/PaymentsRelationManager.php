@@ -2,16 +2,21 @@
 
 namespace App\Filament\Tenant\Resources\InvoiceResource\RelationManagers;
 
+use App\Models\Payment;
+use App\Services\PaymentGateways\PaymentGatewayResolver;
+use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use RuntimeException;
 
 class PaymentsRelationManager extends RelationManager
 {
@@ -71,6 +76,29 @@ class PaymentsRelationManager extends RelationManager
             ])
             ->defaultSort('created_at', 'desc')
             ->headerActions([CreateAction::make()])
-            ->recordActions([EditAction::make(), DeleteAction::make()]);
+            ->recordActions([
+                Action::make('refund')
+                    ->label('Refund')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->visible(fn (Payment $record): bool => in_array($record->method, app(PaymentGatewayResolver::class)->keys(), true)
+                        && $record->type !== 'refund'
+                        && $record->status === 'completed'
+                        && auth('tenant')->user()?->can('refund', $record))
+                    ->action(function (Payment $record): void {
+                        try {
+                            app(PaymentGatewayResolver::class)->for($record->method)->refund($record);
+                        } catch (RuntimeException $e) {
+                            Notification::make()->title('Refund failed')->body($e->getMessage())->danger()->send();
+
+                            return;
+                        }
+
+                        Notification::make()->title('Refund recorded')->success()->send();
+                    }),
+                EditAction::make(),
+                DeleteAction::make(),
+            ]);
     }
 }

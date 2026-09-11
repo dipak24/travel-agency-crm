@@ -59,4 +59,34 @@ class BookingDocument extends Model
             ->logOnlyDirty()
             ->dontLogEmptyChanges();
     }
+
+    /**
+     * Reconciles a booking's documents of one doc type against the file paths currently sitting
+     * in that doc type's upload field — used by BookingResource's per-type upload fields instead
+     * of the old single repeater with a doc-type dropdown. A file removed from the upload widget
+     * removes its row here too; a newly uploaded file becomes a fresh `pending` row.
+     *
+     * @param  array<int, string>  $filePaths
+     */
+    public static function syncForBookingDocType(Booking $booking, string $docType, array $filePaths, string $uploadedBy): void
+    {
+        $filePaths = array_values(array_filter($filePaths));
+
+        $existing = $booking->documents()->where('doc_type', $docType)->get();
+
+        foreach ($existing as $row) {
+            if (! in_array($row->file_path, $filePaths, true)) {
+                $row->delete();
+            }
+        }
+
+        foreach (array_diff($filePaths, $existing->pluck('file_path')->all()) as $newPath) {
+            $booking->documents()->create([
+                'doc_type' => $docType,
+                'file_path' => $newPath,
+                'status' => 'pending',
+                'uploaded_by' => $uploadedBy,
+            ]);
+        }
+    }
 }

@@ -40,6 +40,11 @@ class Customer extends Authenticatable implements FilamentUser, HasAvatar
         return $this->hasMany(Booking::class);
     }
 
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(Invoice::class);
+    }
+
     public function canAccessPanel(Panel $panel): bool
     {
         // Deliberately does NOT also check `$this->password !== null` here.

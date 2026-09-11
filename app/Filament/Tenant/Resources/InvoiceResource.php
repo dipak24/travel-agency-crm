@@ -8,6 +8,8 @@ use App\Filament\Tenant\Resources\InvoiceResource\RelationManagers\PaymentsRelat
 use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Notifications\InvoiceEmailed;
+use App\Notifications\InvoicePaymentLink;
 use BackedEnum;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Actions\Action;
@@ -17,6 +19,7 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
@@ -24,6 +27,7 @@ use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\URL;
 use UnitEnum;
 
 class InvoiceResource extends Resource
@@ -133,6 +137,29 @@ class InvoiceResource extends Resource
                                 fn () => print (Pdf::loadView('pdf.invoice', ['invoice' => $record])->output()),
                                 "{$record->invoice_no}.pdf",
                             );
+                        }),
+                    Action::make('emailInvoice')
+                        ->label('Email invoice')
+                        ->icon('heroicon-o-envelope')
+                        ->requiresConfirmation()
+                        ->modalDescription(fn (Invoice $record): string => "Email a PDF copy of this invoice to {$record->customer?->email}?")
+                        ->action(function (Invoice $record): void {
+                            $record->customer->notify(new InvoiceEmailed($record));
+
+                            Notification::make()->title('Invoice emailed')->success()->send();
+                        }),
+                    Action::make('sendPaymentLink')
+                        ->label('Send payment link')
+                        ->icon('heroicon-o-link')
+                        ->visible(fn (Invoice $record): bool => $record->balanceDue() > 0 && $record->customer?->email !== null)
+                        ->requiresConfirmation()
+                        ->modalDescription(fn (Invoice $record): string => "Email a no-login payment link for this invoice to {$record->customer?->email}?")
+                        ->action(function (Invoice $record): void {
+                            $url = URL::temporarySignedRoute('public.pay.show', now()->addDays(14), ['invoice' => $record->id]);
+
+                            $record->customer->notify(new InvoicePaymentLink($record, $url));
+
+                            Notification::make()->title('Payment link sent')->success()->send();
                         }),
                 ])
                     ->label('Actions')

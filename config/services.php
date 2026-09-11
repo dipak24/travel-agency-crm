@@ -35,4 +35,7 @@ return [
         ],
     ],
 
+    // PayPal and HBL credentials are tenant-scoped, not global — see
+    // App\Filament\Tenant\Pages\PaymentGateways and the tenant_payment_gateways table.
+
 ];

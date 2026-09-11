@@ -36,6 +36,11 @@ class Package extends Model
         return $this->hasMany(FixedDeparture::class);
     }
 
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(Booking::class);
+    }
+
     public function discountTiers(): HasMany
     {
         return $this->hasMany(GroupDiscountTier::class);

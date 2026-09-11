@@ -17,8 +17,6 @@ use App\Filament\Tenant\Resources\PackageResource\Pages\CreatePackage;
 use App\Filament\Tenant\Resources\PackageResource\Pages\EditPackage;
 use App\Filament\Tenant\Resources\RoleResource\Pages\CreateRole;
 use App\Filament\Tenant\Resources\RoleResource\Pages\EditRole;
-use App\Filament\Tenant\Resources\ServiceAvailabilityResource\Pages\CreateServiceAvailability;
-use App\Filament\Tenant\Resources\ServiceAvailabilityResource\Pages\EditServiceAvailability;
 use App\Filament\Tenant\Resources\ServiceResource\Pages\CreateService;
 use App\Filament\Tenant\Resources\ServiceResource\Pages\EditService;
 use App\Filament\Tenant\Resources\StaffResource\Pages\CreateStaff;
@@ -179,7 +177,6 @@ test('tenant create pages redirect to their resource lists after saving', functi
         CreateLead::class,
         CreatePackage::class,
         CreateRole::class,
-        CreateServiceAvailability::class,
         CreateService::class,
         CreateStaff::class,
     ];
@@ -203,7 +200,6 @@ test('tenant edit pages redirect to their resource lists after saving', function
         EditLead::class,
         EditPackage::class,
         EditRole::class,
-        EditServiceAvailability::class,
         EditService::class,
         EditStaff::class,
     ];
@@ -229,7 +225,6 @@ test('seeded tenant owner can manage catalog records', function () {
         'price' => 2500,
         'currency' => 'USD',
         'is_active' => true,
-        'has_limited_availability' => false,
     ]);
 
     expect(Gate::forUser($staff)->allows('create', Service::class))->toBeTrue()

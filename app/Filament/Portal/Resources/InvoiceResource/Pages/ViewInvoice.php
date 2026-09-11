@@ -6,6 +6,7 @@ use App\Filament\Portal\Resources\InvoiceResource;
 use App\Models\Invoice;
 use App\Services\InvoiceGiftVoucherRedemption;
 use App\Services\InvoicePromoRedemption;
+use App\Services\PaymentGateways\PaymentGatewayResolver;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
@@ -20,6 +21,7 @@ class ViewInvoice extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            ...$this->paymentActions(),
             Action::make('applyPromoCode')
                 ->label('Enter promo code')
                 ->icon('heroicon-o-tag')
@@ -68,5 +70,30 @@ class ViewInvoice extends ViewRecord
                     );
                 }),
         ];
+    }
+
+    /**
+     * One "Pay via X" action per gateway this invoice's tenant has enabled — built dynamically
+     * rather than hardcoded to a single gateway, so a new gateway just needs a
+     * PaymentGatewayResolver entry, not a portal UI change too.
+     *
+     * @return array<int, Action>
+     */
+    private function paymentActions(): array
+    {
+        $resolver = app(PaymentGatewayResolver::class);
+
+        return collect($resolver->keys())
+            ->map(fn (string $key): Action => Action::make('payVia'.ucfirst($key))
+                ->label('Pay via '.match ($key) {
+                    'paypal' => 'PayPal',
+                    'hbl' => 'HBL',
+                    default => ucfirst($key),
+                })
+                ->icon('heroicon-o-credit-card')
+                ->color('success')
+                ->visible(fn (Invoice $record): bool => $record->balanceDue() > 0 && $resolver->for($key)->isEnabledFor($record))
+                ->url(fn (Invoice $record): string => route('payments.checkout', ['gateway' => $key, 'invoice' => $record->id])))
+            ->all();
     }
 }

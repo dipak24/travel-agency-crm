@@ -19,7 +19,6 @@ use App\Models\Package;
 use App\Models\Payment;
 use App\Models\PromoCode;
 use App\Models\Service;
-use App\Models\ServiceAvailability;
 use App\Models\SubscriptionPlan;
 use App\Models\SuperAdmin;
 use App\Models\Tenant;
@@ -83,7 +82,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(FixedDeparture::class, TenantCatalogPolicy::class);
         Gate::policy(GroupDiscountTier::class, TenantCatalogPolicy::class);
         Gate::policy(Service::class, TenantCatalogPolicy::class);
-        Gate::policy(ServiceAvailability::class, TenantCatalogPolicy::class);
         Gate::policy(PromoCode::class, TenantCatalogPolicy::class);
         Gate::policy(GiftVoucher::class, TenantCatalogPolicy::class);
         Gate::policy(Payment::class, PaymentPolicy::class);

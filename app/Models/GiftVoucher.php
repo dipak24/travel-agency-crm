@@ -16,6 +16,7 @@ class GiftVoucher extends Model
         'value',
         'currency',
         'issued_to',
+        'source_invoice_id',
         'status',
         'expires_at',
     ];
@@ -36,5 +37,10 @@ class GiftVoucher extends Model
     public function issuedTo(): BelongsTo
     {
         return $this->belongsTo(Customer::class, 'issued_to');
+    }
+
+    public function sourceInvoice(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class, 'source_invoice_id');
     }
 }

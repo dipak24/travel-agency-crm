@@ -83,7 +83,7 @@ test('a customer can view their booking itinerary, include/exclude list, and tra
     $booking = Booking::query()->create([
         'customer_id' => $customer->id,
         'trip_name' => 'Everest Base Camp',
-        'booked_itinerary' => [['title' => 'Day 1', 'description' => 'Arrival in Kathmandu']],
+        'booked_itinerary' => '<p><strong>Day 1</strong></p><p>Arrival in Kathmandu</p>',
     ]);
     BookingIncludeExclude::query()->create([
         'booking_id' => $booking->id, 'type' => 'include', 'title' => 'Airport transfer',

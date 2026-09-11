@@ -2,12 +2,16 @@
 
 use App\Filament\Tenant\Resources\BookingResource\Pages\CreateBooking;
 use App\Filament\Tenant\Resources\BookingResource\Pages\EditBooking;
+use App\Filament\Tenant\Resources\BookingResource\Pages\ListBookings;
 use App\Filament\Tenant\Resources\BookingResource\RelationManagers\TravelersRelationManager;
+use App\Filament\Tenant\Resources\CustomerResource\Pages\ListCustomers;
+use App\Filament\Tenant\Resources\LeadResource\Pages\ListLeads;
 use App\Filament\Tenant\Resources\RoleResource;
 use App\Models\Booking;
 use App\Models\BookingTraveler;
 use App\Models\Customer;
 use App\Models\FixedDeparture;
+use App\Models\Invoice;
 use App\Models\Lead;
 use App\Models\Package;
 use App\Models\Tenant;
@@ -224,7 +228,7 @@ test('a lead converts to a booking and reserves fixed departure capacity', funct
 
     expect($booking->lead_id)->toBe($lead->id)
         ->and($booking->customer_id)->toBe($customer->id)
-        ->and($booking->booked_itinerary)->toBe($package->itinerary)
+        ->and($booking->booked_itinerary)->toContain('Arrival')->toContain('Welcome')
         ->and($booking->total_amount)->toBe(125000);
     expect($departure->fresh()->booked_slots)->toBe(2);
     expect($lead->fresh()->status)->toBe('won');
@@ -302,4 +306,88 @@ test('CRM policies enforce tenant ownership and staff responsibilities', functio
         ->and((new LeadPolicy)->update($sales, $lead)->allowed())->toBeTrue()
         ->and((new TenantUserPolicy)->create($owner))->toBeTrue()
         ->and((new RolePolicy)->create($owner))->toBeTrue();
+});
+
+test('a tenant owner can delete a lead from the list', function () {
+    $tenant = crmTenant('First Agency', 'first-agency');
+    $this->seed();
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $owner->assignRole($ownerRole);
+
+    $lead = Lead::query()->create(['origin' => 'manual']);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(ListLeads::class)
+        ->callAction(TestAction::make('delete')->table($lead));
+
+    expect(Lead::query()->whereKey($lead->id)->exists())->toBeFalse();
+});
+
+test('a customer with no bookings or invoices can be deleted, but one with either cannot', function () {
+    $tenant = crmTenant('First Agency', 'first-agency');
+    $this->seed();
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $owner->assignRole($ownerRole);
+
+    $deletable = Customer::factory()->create();
+    $withBooking = Customer::factory()->create();
+    Booking::query()->create(['customer_id' => $withBooking->id, 'trip_name' => 'Has a booking']);
+    $withInvoiceOnly = Customer::factory()->create();
+    Invoice::query()->create([
+        'customer_id' => $withInvoiceOnly->id, 'amount' => 5000, 'total' => 5000,
+        'currency' => 'USD', 'status' => 'issued', 'purpose' => 'gift_voucher_purchase',
+    ]);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(ListCustomers::class)
+        ->callAction(TestAction::make('delete')->table($deletable));
+
+    expect(Customer::query()->whereKey($deletable->id)->exists())->toBeFalse();
+
+    Livewire::actingAs($owner, 'tenant')->test(ListCustomers::class)
+        ->callAction(TestAction::make('delete')->table($withInvoiceOnly));
+
+    expect(Customer::query()->whereKey($withInvoiceOnly->id)->exists())->toBeTrue();
+
+    Livewire::actingAs($owner, 'tenant')->test(ListCustomers::class)
+        ->callAction(TestAction::make('delete')->table($withBooking));
+
+    expect(Customer::query()->whereKey($withBooking->id)->exists())->toBeTrue();
+});
+
+test('cancelling a booking releases its fixed-departure slot and is hidden once already cancelled or completed', function () {
+    $tenant = crmTenant('First Agency', 'first-agency');
+    $this->seed();
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $owner->assignRole($ownerRole);
+
+    $customer = Customer::factory()->create();
+    $package = Package::query()->create(['name' => 'K2 Base Camp', 'slug' => 'k2', 'package_code' => 'K2-1', 'duration_days' => 20]);
+    $departure = FixedDeparture::query()->create([
+        'package_id' => $package->id, 'start_date' => now()->addMonth(), 'end_date' => now()->addMonth()->addDays(20),
+        'total_slots' => 10, 'booked_slots' => 4, 'status' => 'open',
+    ]);
+    $booking = Booking::query()->create([
+        'customer_id' => $customer->id, 'trip_name' => 'K2 trip', 'fixed_departure_id' => $departure->id,
+        'pax_count' => 2, 'status' => 'confirmed',
+    ]);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(ListBookings::class)
+        ->callAction(TestAction::make('cancelBooking')->table($booking));
+
+    expect($booking->refresh()->status)->toBe('cancelled')
+        ->and($departure->refresh()->booked_slots)->toBe(2);
+
+    Livewire::actingAs($owner, 'tenant')->test(ListBookings::class)
+        ->assertActionHidden(TestAction::make('cancelBooking')->table($booking));
 });
