@@ -5,6 +5,7 @@ namespace App\Filament\Portal\Pages;
 use App\Models\Invoice;
 use App\Services\GiftVoucherPurchase;
 use App\Services\PaymentGateways\PaymentGatewayResolver;
+use App\Support\Money;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
@@ -60,7 +61,7 @@ class BuyGiftVoucher extends Page
     {
         $data = $this->form->getState();
         $customer = auth('customer')->user();
-        $amountMinor = (int) round(((float) $data['amount']) * 100);
+        $amountMinor = (int) Money::toCents($data['amount']);
 
         $invoice = app(GiftVoucherPurchase::class)->createInvoice($customer, $amountMinor, $this->tenantCurrency());
 

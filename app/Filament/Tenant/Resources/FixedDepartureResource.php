@@ -2,6 +2,7 @@
 
 namespace App\Filament\Tenant\Resources;
 
+use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Tenant\Resources\FixedDepartureResource\Pages;
 use App\Models\FixedDeparture;
 use BackedEnum;
@@ -37,7 +38,7 @@ class FixedDepartureResource extends Resource
             DatePicker::make('end_date')->required()->afterOrEqual('start_date'),
             TextInput::make('total_slots')->numeric()->integer()->minValue(1)->required(),
             TextInput::make('overbooking_buffer')->numeric()->integer()->minValue(0)->default(0)->required(),
-            TextInput::make('price_override')->numeric()->integer()->minValue(0),
+            MoneyInput::make('price_override')->label('Price override')->minValue(0),
             Select::make('status')->options([
                 'open' => 'Open',
                 'full' => 'Full',

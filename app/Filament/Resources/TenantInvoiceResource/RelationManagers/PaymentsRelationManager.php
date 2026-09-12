@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\TenantInvoiceResource\RelationManagers;
 
+use App\Filament\Forms\Components\MoneyInput;
 use App\Models\TenantInvoice;
 use App\Models\TenantPayment;
 use App\Support\TenantContext;
@@ -27,9 +28,9 @@ class PaymentsRelationManager extends RelationManager
     public function form(Schema $schema): Schema
     {
         return $schema->components([
-            TextInput::make('amount')
-                ->label('Amount (minor units)')
-                ->numeric()->integer()->minValue(0)->required()
+            MoneyInput::make('amount')
+                ->label('Amount')
+                ->minValue(0)->required()
                 ->default(fn (Get $get): int => $this->getOwnerRecord()->balanceDue()),
             Select::make('currency')->options([
                 'USD' => 'USD', 'EUR' => 'EUR', 'GBP' => 'GBP', 'AUD' => 'AUD',
@@ -66,7 +67,7 @@ class PaymentsRelationManager extends RelationManager
             ->recordTitleAttribute('transaction_ref')
             ->modifyQueryUsing(fn (Builder $query): Builder => $query->withoutGlobalScopes())
             ->columns([
-                TextColumn::make('amount')->numeric()->sortable(),
+                TextColumn::make('amount')->money(fn (TenantPayment $record): string => $record->currency, divideBy: 100)->sortable(),
                 TextColumn::make('type')->badge(),
                 TextColumn::make('method')->badge()->color('gray'),
                 TextColumn::make('status')->badge()

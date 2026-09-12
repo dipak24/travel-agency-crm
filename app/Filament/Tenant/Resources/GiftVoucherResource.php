@@ -2,6 +2,7 @@
 
 namespace App\Filament\Tenant\Resources;
 
+use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Tenant\Resources\GiftVoucherResource\Pages;
 use App\Models\GiftVoucher;
 use BackedEnum;
@@ -44,7 +45,7 @@ class GiftVoucherResource extends Resource
     {
         return $schema->components([
             TextInput::make('code')->disabled(),
-            TextInput::make('value')->label('Value (minor units)')->disabled(),
+            MoneyInput::make('value')->label('Value')->disabled(),
             TextInput::make('currency')->disabled(),
             Select::make('issued_to')
                 ->label('Issued to')
@@ -64,7 +65,7 @@ class GiftVoucherResource extends Resource
     {
         return $table->columns([
             TextColumn::make('code')->searchable()->sortable(),
-            TextColumn::make('value')->numeric(),
+            TextColumn::make('value')->money(fn (GiftVoucher $record): string => $record->currency, divideBy: 100),
             TextColumn::make('currency'),
             TextColumn::make('issuedTo.name')->label('Issued to')->placeholder('—'),
             TextColumn::make('status')->badge(),

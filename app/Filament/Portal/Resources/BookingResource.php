@@ -59,7 +59,7 @@ class BookingResource extends Resource
                 TextColumn::make('start_date')->date()->sortable(),
                 TextColumn::make('end_date')->date()->sortable(),
                 TextColumn::make('pax_count')->label('Travelers'),
-                TextColumn::make('total_amount')->label('Total')->numeric()->sortable(),
+                TextColumn::make('total_amount')->label('Total')->money(fn (Booking $record): string => $record->tenant?->currency ?? 'USD', divideBy: 100)->sortable(),
                 TextColumn::make('status')->badge(),
             ])
             ->defaultSort('start_date', 'desc');
@@ -75,7 +75,7 @@ class BookingResource extends Resource
                     TextEntry::make('start_date')->date(),
                     TextEntry::make('end_date')->date(),
                     TextEntry::make('pax_count')->label('Travelers'),
-                    TextEntry::make('total_amount')->label('Total'),
+                    TextEntry::make('total_amount')->label('Total')->money(fn (Booking $record): string => $record->tenant?->currency ?? 'USD', divideBy: 100),
                     TextEntry::make('description')->columnSpanFull(),
                 ])
                 ->columns(3),
@@ -136,7 +136,7 @@ class BookingResource extends Resource
                         ->schema([
                             TextEntry::make('service.name')->label('Service'),
                             TextEntry::make('quantity'),
-                            TextEntry::make('price')->label('Price'),
+                            TextEntry::make('price')->label('Price')->money(fn (): string => auth('customer')->user()->tenant?->currency ?? 'USD', divideBy: 100),
                             TextEntry::make('status')->badge(),
                         ])
                         ->columns(4)

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Tenant\Resources;
 
+use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Tenant\Resources\PackageResource\Pages;
 use App\Models\Package;
 use BackedEnum;
@@ -59,18 +60,14 @@ class PackageResource extends Resource
                             ->numeric()
                             ->minValue(1)
                             ->integer(),
-                        TextInput::make('base_price')
-                            ->label('Base price (minor units)')
+                        MoneyInput::make('base_price')
+                            ->label('Base price')
                             ->required()
-                            ->numeric()
-                            ->minValue(0)
-                            ->integer(),
-                        TextInput::make('sales_price')
-                            ->label('Sales price (minor units)')
+                            ->minValue(0),
+                        MoneyInput::make('sales_price')
+                            ->label('Sales price')
                             ->required()
-                            ->numeric()
-                            ->minValue(0)
-                            ->integer(),
+                            ->minValue(0),
                         Select::make('status')
                             ->options([
                                 'draft' => 'Draft',
@@ -120,7 +117,7 @@ class PackageResource extends Resource
                     ->sortable(),
                 TextColumn::make('sales_price')
                     ->label('Sales price')
-                    ->numeric(),
+                    ->money(fn (): string => auth('tenant')->user()->tenant->currency ?? 'USD', divideBy: 100),
                 TextColumn::make('status')
                     ->badge()
                     ->sortable(),

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use App\Notifications\BookingStatusChanged;
+use App\Services\Mail\TenantMailer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -20,7 +21,9 @@ class Booking extends Model
     {
         static::updated(function (self $booking): void {
             if ($booking->wasChanged('status')) {
-                $booking->customer?->notify(new BookingStatusChanged($booking));
+                if ($customer = $booking->customer) {
+                    app(TenantMailer::class)->send($booking->tenant_id, $customer, new BookingStatusChanged($booking));
+                }
             }
         });
     }

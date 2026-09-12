@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Resources\SubscriptionPlanResource\Pages;
 use App\Models\SubscriptionPlan;
 use BackedEnum;
@@ -35,10 +36,9 @@ class SubscriptionPlanResource extends Resource
             Section::make('Plan details')
                 ->schema([
                     TextInput::make('name')->required()->maxLength(255),
-                    TextInput::make('price')
-                        ->label('Price (minor units)')
-                        ->helperText('E.g. 4999 = 49.99 in the plan\'s billing currency.')
-                        ->numeric()->integer()->minValue(0)->required(),
+                    MoneyInput::make('price')
+                        ->label('Price (USD)')
+                        ->minValue(0)->required(),
                     Select::make('billing_cycle')->options([
                         'monthly' => 'Monthly',
                         'yearly' => 'Yearly',
@@ -60,7 +60,7 @@ class SubscriptionPlanResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('name')->weight('bold')->searchable()->sortable(),
-                TextColumn::make('price')->numeric()->sortable(),
+                TextColumn::make('price')->money('USD', divideBy: 100)->sortable(),
                 TextColumn::make('billing_cycle')->badge()->sortable(),
                 ToggleColumn::make('is_active')->label('Active'),
                 TextColumn::make('subscriptions_count')->label('Subscribers')->counts('subscriptions'),

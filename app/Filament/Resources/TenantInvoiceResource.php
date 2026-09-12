@@ -2,10 +2,12 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Resources\TenantInvoiceResource\Pages;
 use App\Filament\Resources\TenantInvoiceResource\RelationManagers\PaymentsRelationManager;
 use App\Models\TenantInvoice;
 use App\Models\TenantSubscription;
+use App\Support\Money;
 use BackedEnum;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Actions\Action;
@@ -105,8 +107,8 @@ class TenantInvoiceResource extends Resource
                         ])->required()->default('USD'),
                         DatePicker::make('issue_date')->native(false)->required()->default(now()->toDateString()),
                         DatePicker::make('due_date')->native(false),
-                        TextInput::make('tax')->label('Tax (minor units)')->numeric()->integer()->minValue(0)->default(0),
-                        TextInput::make('discount')->label('Discount (minor units)')->numeric()->integer()->minValue(0)->default(0),
+                        MoneyInput::make('tax')->label('Tax')->minValue(0)->default(0),
+                        MoneyInput::make('discount')->label('Discount')->minValue(0)->default(0),
                         Textarea::make('notes'),
                     ])
                     ->columns(2),
@@ -114,10 +116,10 @@ class TenantInvoiceResource extends Resource
                     ->columnSpanFull()
                     ->visibleOn('edit')
                     ->schema([
-                        Placeholder::make('subtotal_display')->label('Subtotal')->content(fn (TenantInvoice $record): string => (string) $record->subtotal),
-                        Placeholder::make('total_display')->label('Total')->content(fn (TenantInvoice $record): string => (string) $record->total),
-                        Placeholder::make('paid_display')->label('Amount paid')->content(fn (TenantInvoice $record): string => (string) $record->paidAmount()),
-                        Placeholder::make('balance_display')->label('Balance due')->content(fn (TenantInvoice $record): string => (string) $record->balanceDue()),
+                        Placeholder::make('subtotal_display')->label('Subtotal')->content(fn (TenantInvoice $record): string => Money::format($record->subtotal, $record->currency)),
+                        Placeholder::make('total_display')->label('Total')->content(fn (TenantInvoice $record): string => Money::format($record->total, $record->currency)),
+                        Placeholder::make('paid_display')->label('Amount paid')->content(fn (TenantInvoice $record): string => Money::format($record->paidAmount(), $record->currency)),
+                        Placeholder::make('balance_display')->label('Balance due')->content(fn (TenantInvoice $record): string => Money::format($record->balanceDue(), $record->currency)),
                     ])
                     ->columns(2),
                 Section::make('Line items')
@@ -130,7 +132,7 @@ class TenantInvoiceResource extends Resource
                                 Select::make('type')->options(self::itemTypeOptions())->required()->default('other'),
                                 TextInput::make('description')->required()->columnSpan(2),
                                 TextInput::make('qty')->numeric()->integer()->minValue(1)->default(1)->required(),
-                                TextInput::make('unit_price')->label('Unit price (minor units)')->numeric()->integer()->minValue(0)->default(0)->required(),
+                                MoneyInput::make('unit_price')->label('Unit price')->minValue(0)->default(0)->required(),
                             ])
                             ->columns(5)
                             ->defaultItems(0)
@@ -159,8 +161,8 @@ class TenantInvoiceResource extends Resource
                         'cancelled' => 'gray',
                         default => 'info',
                     }),
-                TextColumn::make('total')->numeric()->sortable(),
-                TextColumn::make('balance_due')->label('Balance due')->state(fn (TenantInvoice $record): int => $record->balanceDue()),
+                TextColumn::make('total')->money(fn (TenantInvoice $record): string => $record->currency, divideBy: 100)->sortable(),
+                TextColumn::make('balance_due')->label('Balance due')->state(fn (TenantInvoice $record): int => $record->balanceDue())->money(fn (TenantInvoice $record): string => $record->currency, divideBy: 100),
                 TextColumn::make('due_date')->date('M j, Y')->sortable()->placeholder('—'),
             ])
             ->defaultSort('created_at', 'desc')

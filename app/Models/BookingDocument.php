@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use App\Notifications\BookingDocumentReviewed;
+use App\Services\Mail\TenantMailer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
@@ -17,7 +18,9 @@ class BookingDocument extends Model
     {
         static::updated(function (self $document): void {
             if ($document->wasChanged('status') && in_array($document->status, ['approved', 'rejected'], true)) {
-                $document->booking?->customer?->notify(new BookingDocumentReviewed($document));
+                if ($customer = $document->booking?->customer) {
+                    app(TenantMailer::class)->send($document->tenant_id, $customer, new BookingDocumentReviewed($document));
+                }
             }
         });
     }

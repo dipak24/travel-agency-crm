@@ -59,7 +59,7 @@ test('a platform admin can create a subscription plan', function () {
 
     fillBillingForm($test, [
         'name' => 'Growth',
-        'price' => 9900,
+        'price' => 99,
         'billing_cycle' => 'monthly',
         'is_active' => true,
     ])
@@ -85,9 +85,9 @@ test('a platform admin can create a tenant invoice with line items and a unique 
         'tax' => 0,
         'discount' => 0,
         'items' => [
-            ['type' => 'subscription', 'description' => 'Growth plan — September', 'qty' => 1, 'unit_price' => 4900],
-            ['type' => 'hosting', 'description' => 'Hosting — September', 'qty' => 1, 'unit_price' => 1000],
-            ['type' => 'domain', 'description' => 'Domain renewal', 'qty' => 1, 'unit_price' => 1500],
+            ['type' => 'subscription', 'description' => 'Growth plan — September', 'qty' => 1, 'unit_price' => 49],
+            ['type' => 'hosting', 'description' => 'Hosting — September', 'qty' => 1, 'unit_price' => 10],
+            ['type' => 'domain', 'description' => 'Domain renewal', 'qty' => 1, 'unit_price' => 15],
         ],
     ])
         ->call('create')

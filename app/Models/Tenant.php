@@ -44,6 +44,11 @@ class Tenant extends Model
         return $this->hasMany(TenantPaymentGateway::class);
     }
 
+    public function mailSetting(): HasOne
+    {
+        return $this->hasOne(TenantMailSetting::class);
+    }
+
     public function activeSubscription(): HasOne
     {
         // Tenant-owned models are scoped to the current TenantContext by
@@ -58,5 +63,17 @@ class Tenant extends Model
     {
         // Same cross-tenant admin-panel need as activeSubscription() above.
         return $this->hasMany(TenantInvoice::class)->withoutGlobalScopes();
+    }
+
+    public function bookings(): HasMany
+    {
+        // Same cross-tenant admin-panel need as activeSubscription() above —
+        // used by the admin dashboard's platform-wide/top-tenant widgets.
+        return $this->hasMany(Booking::class)->withoutGlobalScopes();
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class)->withoutGlobalScopes();
     }
 }

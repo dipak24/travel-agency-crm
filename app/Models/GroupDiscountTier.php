@@ -25,6 +25,15 @@ class GroupDiscountTier extends Model
         'discount_value',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'min_pax' => 'integer',
+            'max_pax' => 'integer',
+            'discount_value' => 'integer',
+        ];
+    }
+
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);

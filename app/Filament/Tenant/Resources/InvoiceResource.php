@@ -2,6 +2,7 @@
 
 namespace App\Filament\Tenant\Resources;
 
+use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Tenant\Resources\InvoiceResource\Pages;
 use App\Filament\Tenant\Resources\InvoiceResource\RelationManagers\ItemsRelationManager;
 use App\Filament\Tenant\Resources\InvoiceResource\RelationManagers\PaymentsRelationManager;
@@ -10,6 +11,8 @@ use App\Models\Customer;
 use App\Models\Invoice;
 use App\Notifications\InvoiceEmailed;
 use App\Notifications\InvoicePaymentLink;
+use App\Services\Mail\TenantMailer;
+use App\Support\Money;
 use BackedEnum;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Actions\Action;
@@ -72,26 +75,18 @@ class InvoiceResource extends Resource
                 ->readOnly()
                 ->helperText('Auto-generated when the invoice is created.')
                 ->hiddenOn('create'),
-            TextInput::make('amount')
-                ->label('Amount (minor units)')
-                ->numeric()
-                ->integer()
+            MoneyInput::make('amount')
+                ->label('Amount')
                 ->minValue(0)
                 ->required(),
-            TextInput::make('tax')
-                ->numeric()
-                ->integer()
+            MoneyInput::make('tax')
                 ->minValue(0)
                 ->default(0),
-            TextInput::make('discount')
-                ->numeric()
-                ->integer()
+            MoneyInput::make('discount')
                 ->minValue(0)
                 ->default(0),
-            TextInput::make('total')
-                ->label('Total (minor units)')
-                ->numeric()
-                ->integer()
+            MoneyInput::make('total')
+                ->label('Total')
                 ->minValue(0)
                 ->required(),
             Select::make('status')->options([
@@ -106,8 +101,8 @@ class InvoiceResource extends Resource
             Section::make('Payments')
                 ->visibleOn('edit')
                 ->schema([
-                    Placeholder::make('paid_display')->label('Amount paid')->content(fn (Invoice $record): string => (string) $record->paidAmount()),
-                    Placeholder::make('balance_display')->label('Balance due')->content(fn (Invoice $record): string => (string) $record->balanceDue()),
+                    Placeholder::make('paid_display')->label('Amount paid')->content(fn (Invoice $record): string => Money::format($record->paidAmount(), $record->currency)),
+                    Placeholder::make('balance_display')->label('Balance due')->content(fn (Invoice $record): string => Money::format($record->balanceDue(), $record->currency)),
                 ])
                 ->columns(1),
         ]);
@@ -119,7 +114,7 @@ class InvoiceResource extends Resource
             TextColumn::make('invoice_no')->label('Invoice')->searchable()->sortable(),
             TextColumn::make('booking.trip_name')->label('Booking')->searchable(),
             TextColumn::make('customer.name')->label('Customer')->searchable(),
-            TextColumn::make('total')->label('Total')->numeric()->sortable(),
+            TextColumn::make('total')->label('Total')->money(fn (Invoice $record): string => $record->currency, divideBy: 100)->sortable(),
             TextColumn::make('status')->badge()->sortable(),
             TextColumn::make('due_date')->date()->sortable(),
         ])
@@ -144,7 +139,7 @@ class InvoiceResource extends Resource
                         ->requiresConfirmation()
                         ->modalDescription(fn (Invoice $record): string => "Email a PDF copy of this invoice to {$record->customer?->email}?")
                         ->action(function (Invoice $record): void {
-                            $record->customer->notify(new InvoiceEmailed($record));
+                            app(TenantMailer::class)->send($record->tenant_id, $record->customer, new InvoiceEmailed($record));
 
                             Notification::make()->title('Invoice emailed')->success()->send();
                         }),
@@ -157,7 +152,7 @@ class InvoiceResource extends Resource
                         ->action(function (Invoice $record): void {
                             $url = URL::temporarySignedRoute('public.pay.show', now()->addDays(14), ['invoice' => $record->id]);
 
-                            $record->customer->notify(new InvoicePaymentLink($record, $url));
+                            app(TenantMailer::class)->send($record->tenant_id, $record->customer, new InvoicePaymentLink($record, $url));
 
                             Notification::make()->title('Payment link sent')->success()->send();
                         }),

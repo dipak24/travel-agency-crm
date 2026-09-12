@@ -5,6 +5,7 @@ namespace App\Filament\Tenant\Resources;
 use App\Filament\Tenant\Resources\CustomerResource\Pages;
 use App\Models\Customer;
 use App\Notifications\CustomerPortalInvite;
+use App\Services\Mail\TenantMailer;
 use App\Support\TenantContext;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -100,7 +101,7 @@ class CustomerResource extends Resource
                         $token = Password::broker('customers')->createToken($record);
                         $url = Filament::getPanel('portal')->getResetPasswordUrl($token, $record);
 
-                        $record->notify(new CustomerPortalInvite($url));
+                        app(TenantMailer::class)->send($record->tenant_id, $record, new CustomerPortalInvite($url));
 
                         Notification::make()
                             ->title('Invite sent')

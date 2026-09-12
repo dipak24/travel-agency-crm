@@ -217,18 +217,18 @@ in as each phase starts.
      `AppServiceProvider` that checks `super_admin` → `tenant` → `customer` in
      order. Covered by new `tests/Feature/AuditLoggingTest.php`.
 
-8. **Phase 8 — Public Website & API.** Tenant resolution (subdomain or
-   `?tenant=slug`), published package/departure read-only API endpoints, public
-   inquiry form → auto-creates a Lead, self-service waitlist entry on full fixed
-   departures, IP rate limiting, Redis caching. **Not started** as this phase's
-   own scope — none of the above exists. One narrow, unrelated slice of "public
-   site" was pulled forward into Phase 10 at the user's explicit request: a
-   no-login public payment-link page (`GET /pay/{invoice}`, a signed URL, no
-   tenant resolution by subdomain involved — the tenant is resolved from the
-   invoice itself). That page doesn't touch or unblock anything else on this
-   list. Depends only on Phases 5 and 6 (leads + catalog) — does **not** need
-   Phase 7, so it can run in parallel with finishing booking & billing rather
-   than waiting on it.
+8. **Phase 8 — Public Website & API.** JUSt Build the API Onley Tenant
+   resolution (subdomain or `?tenant=slug`), published package/departure
+   read-only API endpoints, public inquiry form → auto-creates a Lead,
+   self-service waitlist entry on full fixed departures, IP rate limiting, Redis
+   caching. **Not started** as this phase's own scope — none of the above
+   exists. One narrow, unrelated slice of "public site" was pulled forward into
+   Phase 10 at the user's explicit request: a no-login public payment-link page
+   (`GET /pay/{invoice}`, a signed URL, no tenant resolution by subdomain
+   involved — the tenant is resolved from the invoice itself). That page doesn't
+   touch or unblock anything else on this list. Depends only on Phases 5 and 6
+   (leads + catalog) — does **not** need Phase 7, so it can run in parallel with
+   finishing booking & billing rather than waiting on it.
 
 9. **Phase 9 — Customer Portal.** Invite-only account creation, profile, booking
    history (read-only for past trips), traveler/document upload workflows,
@@ -541,17 +541,76 @@ in as each phase starts.
     traveler info/balance due, tenant-configurable schedule), tenant
     marketing/transactional email templates, Super Admin platform email
     templates, mass-email campaigns, `saas_leads` (platform's own top-of-
-    funnel), waitlist manual-notify flow, unsubscribe compliance. **Not
+    funnel), waitlist manual-notify flow, unsubscribe compliance. **Mostly not
     started** — every model here (`EmailTemplate`, `EmailCampaign`, `Reminder`,
-    `SaasLead`, etc.) is currently missing, only the tables exist. Reminders
+    `SaasLead`, etc.) is still missing, only the tables exist. Reminders
     depend on Phase 7 data; the email-template/campaign piece only depends on
     Phase 0/3/5 (tenants + customers) and could be pulled earlier if a second
     dev track has spare capacity.
+    - **Done, pulled forward (2026-09-12)**: the outgoing-mail infrastructure
+      every future piece of this phase (and every existing notification —
+      invoices, portal invites, booking/document status changes, gift-voucher
+      purchase, payment links) will need regardless: **per-tenant SMTP
+      configuration**, kept entirely separate from a **platform-wide SMTP
+      configuration**, exactly matching how Phase 10's payment gateways ended
+      up tenant-scoped. Two new tables/models, `tenant_mail_settings`
+      (`tenant_id` unique, `enabled`, `from_name`, `from_address`, an
+      `encrypted:array` `credentials` blob — host/port/username/password/
+      encryption) and `platform_mail_settings` (the same shape, one singleton
+      row, no `tenant_id`). New pages: `App\Filament\Tenant\Pages\MailSettings`
+      (gated by the existing `manage settings` permission, same pattern as
+      `Settings`/`PaymentGateways`) and `App\Filament\Pages\MailSettings` (the
+      admin panel's first custom Page — gated by the existing `manage
+      platform` permission), each with its own "Send test email" action.
+      `App\Services\Mail\TenantMailer::send(?int $tenantId, $notifiable,
+      $notification)` is the single choke point every notification now goes
+      through instead of calling `->notify()` directly: it resolves the
+      notifiable's own tenant's enabled SMTP settings first, falls back to the
+      platform's enabled settings, and finally falls through untouched to
+      whatever this app's `.env`-configured default mailer already is —
+      by temporarily swapping `config(['mail.default' => ..., 'mail.from' =>
+      ...])` for the duration of one `notify()` call inside a `try/finally`,
+      then restoring the original values regardless of whether sending
+      succeeded or threw. Safe because no notification in this app implements
+      `ShouldQueue` (all send synchronously within the request that triggers
+      them), so there's no risk of one tenant's swapped mailer config leaking
+      into another tenant's job on a reused queue-worker process — revisit
+      this assumption if any notification here is ever queued. All five
+      existing `->notify()` call sites (`Booking`, `BookingDocument`,
+      `GiftVoucherPurchase`, `CustomerResource::inviteToPortal`,
+      `InvoiceResource::emailInvoice`/`sendPaymentLink`) now route through it,
+      each passing the record's own `tenant_id` (never the ambient
+      `TenantContext`), matching the existing
+      `ResolvesTenantCredentials`/payment-gateway convention. **Found a real
+      bug while testing this**: the first cut of `TenantMailer`'s
+      restore-original-config step built the snapshot with unqualified keys
+      (`['default' => ..., 'from' => ...]`) and passed it straight to Laravel's
+      `config()` helper — which sets top-level `default`/`from` keys, not
+      `mail.default`/`mail.from` — so the dynamic tenant mailer silently never
+      got un-set after the first send. Caught by a test asserting
+      `config('mail.default')` after `send()`, not by reading the code; fixed
+      by qualifying both keys (`'mail.default'`, `'mail.from'`). Covered by
+      `tests/Feature/TenantMailerTest.php` (fallback order, tenant-overrides-
+      platform, disabled-tenant-setting-ignored, two-tenants-no-leakage,
+      config-restored-even-on-exception),
+      `tests/Feature/TenantMailSettingsTest.php`, and
+      `tests/Feature/PlatformMailSettingsTest.php`. Explicitly out of scope
+      here (real Phase 11 work, not touched): `EmailTemplate` /
+      `EmailCampaign` / mass-email campaigns / `saas_leads` / reminders /
+      unsubscribe compliance — this was only the SMTP-configuration layer
+      those features will eventually send through.
 
 12. **Phase 12 — Reports & Analytics.** Per-panel dashboards, cross-tenant Super
     Admin analytics, revenue/conversion/staff-performance reports, precomputed
-    nightly aggregate jobs. **Not started.** Needs Phase 7 data at minimum; more
-    useful once Phases 10–11 add payment and campaign data too.
+    nightly aggregate jobs. **Dashboards and reports themselves are now built**
+    (2026-09-12, pulled forward — see the Admin Panel "Dashboard"/"Global
+    Reports" and Tenant Panel "Tenant Dashboard"/"Reports" checklist sections
+    below), computed live on every page load rather than precomputed. **Not
+    done**: nightly aggregate jobs — genuinely deferred, not needed yet at this
+    data volume; live queries are simple counts/sums over indexed columns. Will
+    matter once a tenant has enough bookings/payments history that computing
+    these live gets slow, at which point the same widgets can read from a
+    precomputed table instead of changing their public shape.
 
 13. **Phase 13 — Production Hardening.** Formal security review closeout (2FA
     for `super_admins`/`tenant_users`, payment webhook signature verification if
@@ -652,16 +711,28 @@ it as a to-check/to-build item either way.
       `period_start`/`period_end` on line items) a future scheduled job would
       need
 
-**Dashboard**
+**Dashboard** — built as widgets on the existing default Filament Dashboard
+(`App\Filament\Widgets\*`, auto-discovered by `AdminPanelProvider`), gated by
+the existing `manage tenants`/`manage billing` platform permissions
 
-- [ ] Total tenants + active/trial/suspended counts
-- [ ] Recent signups
-- [ ] Platform-wide booking/revenue stats
+- [x] Total tenants + active/trial/suspended counts — `TenantOverview`
+- [x] Recent signups — `RecentSignups` (last 10 tenants)
+- [x] Platform-wide booking/revenue stats — `PlatformActivityOverview` (total
+      bookings, bookings this month, completed-payment revenue broken out per
+      currency — tenants aren't assumed to share one currency, so revenue is
+      never blended across them)
 
-**Global Reports**
+**Global Reports** — folded into the same Dashboard rather than a separate
+page; the roadmap's own two line items are both just more widgets on it
 
-- [ ] Top-performing tenants
-- [ ] Total bookings/revenue across platform
+- [x] Top-performing tenants — `TopPerformingTenants`, ranked by booking
+      volume (currency-agnostic) with each tenant's own revenue/currency shown
+      per row rather than implying a cross-currency ranking
+- [x] Total bookings/revenue across platform — `PlatformActivityOverview`
+      above. New `Tenant::bookings()`/`Tenant::payments()` relations
+      (`withoutGlobalScopes()`, same admin cross-tenant pattern as
+      `activeSubscription()`/`tenantInvoices()`) back both of these widgets.
+      Covered by `tests/Feature/AdminDashboardWidgetsTest.php`.
 
 **Email Template Builder (platform templates)**
 
@@ -672,7 +743,10 @@ it as a to-check/to-build item either way.
 
 **System Settings**
 
-- [ ] Global email/SMS provider config
+- [x] Global email provider config — `App\Filament\Pages\MailSettings`
+      (platform-wide SMTP, `platform_mail_settings`, gated by `manage
+      platform`); see the Phase 11 note above. SMS provider config not built
+      (no SMS sending exists anywhere in the app yet).
 - [ ] Default currency list
 - [ ] Plan/feature toggles
 - [ ] Maintenance mode
@@ -691,14 +765,24 @@ it as a to-check/to-build item either way.
 
 ### Tenant Panel (`/tenant`, guard: `tenant`)
 
-**Tenant Dashboard** — default Filament dashboard exists; widgets below
-unconfirmed
+**Tenant Dashboard** — built as widgets on the default Filament dashboard
+(`App\Filament\Tenant\Widgets\*`, auto-discovered by `TenantPanelProvider`),
+open to any logged-in tenant staff (no extra permission gate — same as the
+Dashboard page itself)
 
-- [ ] Leads-pipeline widget
-- [ ] Bookings-this-month widget
-- [ ] Pending-invoices widget
-- [ ] Upcoming-trips widget
-- [ ] Staff-performance snapshot
+- [x] Leads-pipeline widget — `LeadsPipeline` (bar chart, new/contacted/
+      negotiating/won/lost)
+- [x] Bookings-this-month widget — a `Stat` on `OperationsOverview`
+- [x] Pending-invoices widget — a `Stat` on `OperationsOverview` (count +
+      outstanding amount in the tenant's own currency)
+- [x] Upcoming-trips widget — `UpcomingTrips` (next 10 bookings starting within
+      30 days, cancelled excluded) plus a 30-day count `Stat` on
+      `OperationsOverview`
+- [x] Staff-performance snapshot — `StaffPerformance` (leads assigned/won,
+      bookings created, per staff member); new `TenantUser::assignedLeads()`/
+      `createdBookings()` relations back its `withCount()` query. Reused
+      as-is on the new Reports page below rather than duplicated.
+      Covered by `tests/Feature/TenantDashboardWidgetsTest.php`.
 
 **Staff & Role Management** — built
 
@@ -719,9 +803,9 @@ unconfirmed
 - [x] Assign lead to staff
 - [x] Set follow-up date
 - [x] Convert lead → booking
-- [x] Delete lead — `ActionGroup([EditAction, DeleteAction])` on `LeadResource`'s
-      table; no FK guard needed since every table referencing `lead_id`
-      (`bookings`) is `nullOnDelete()`. Covered by `CrmModulesTest`.
+- [x] Delete lead — `ActionGroup([EditAction, DeleteAction])` on
+      `LeadResource`'s table; no FK guard needed since every table referencing
+      `lead_id` (`bookings`) is `nullOnDelete()`. Covered by `CrmModulesTest`.
 
 **Customer Management** — built
 
@@ -734,8 +818,8 @@ unconfirmed
       `CustomerResource`'s table, guarded with a `DeleteAction::before()` check:
       `bookings.customer_id`/`invoices.customer_id` are both
       `restrictOnDelete()` at the DB level, so deleting a customer with any
-      booking or invoice (a gift-voucher purchase invoice included, even with
-      no booking) is blocked with a clear notification instead of a raw
+      booking or invoice (a gift-voucher purchase invoice included, even with no
+      booking) is blocked with a clear notification instead of a raw
       `QueryException`. Covered by `CrmModulesTest`.
 - [x] Invite customer to portal (send invite email) — `inviteToPortal` table
       action on `CustomerResource`, visible only while the customer has no
@@ -783,26 +867,27 @@ Phase 9
       `App\Services\InvoiceGiftVoucherRedemption` on the portal invoice view,
       not a tenant-panel action
 - [x] Auto-expire a gift voucher past `expires_at` — a new
-      `app:expire-gift-vouchers` command (`App\Console\Commands\
-      ExpireGiftVouchers`) bulk-updates every `unredeemed`/`partially_redeemed`
-      voucher past its `expires_at` to `expired`, scheduled daily in
-      `routes/console.php`. Runs with `withoutGlobalScopes()` since a scheduled
-      command has no `TenantContext` — without it, `BelongsToTenant`'s
-      `TenantScope` would silently scope to `tenant_id = 0` and touch zero
-      rows across every tenant. `InvoiceGiftVoucherRedemption` already rejected
-      an expired voucher at redemption time regardless; this closes the
-      remaining gap where the `status` column itself never reflected that
-      until someone tried to redeem it. Covered by
-      `tests/Feature/ExpireGiftVouchersTest.php`.
+      `app:expire-gift-vouchers` command
+      (`App\Console\Commands\
+      ExpireGiftVouchers`) bulk-updates every
+      `unredeemed`/`partially_redeemed` voucher past its `expires_at` to
+      `expired`, scheduled daily in `routes/console.php`. Runs with
+      `withoutGlobalScopes()` since a scheduled command has no `TenantContext` —
+      without it, `BelongsToTenant`'s `TenantScope` would silently scope to
+      `tenant_id = 0` and touch zero rows across every tenant.
+      `InvoiceGiftVoucherRedemption` already rejected an expired voucher at
+      redemption time regardless; this closes the remaining gap where the
+      `status` column itself never reflected that until someone tried to redeem
+      it. Covered by `tests/Feature/ExpireGiftVouchersTest.php`.
 
 **Add-on Services Catalog** — built; inventory tracking deliberately removed
 
 - [x] Create / list / edit / delete service
 - Removed at the user's explicit request (2026-09-11): date-based availability
-      slots / booked-vs-total tracking. `ServiceAvailabilityResource`, the
-      `ServiceAvailability` model, and the `service_availability` table are all
-      deleted; `App\Services\BookingAddonRequest` no longer does any capacity
-      locking, it just creates the `requested` `BookingAddon` row directly.
+  slots / booked-vs-total tracking. `ServiceAvailabilityResource`, the
+  `ServiceAvailability` model, and the `service_availability` table are all
+  deleted; `App\Services\BookingAddonRequest` no longer does any capacity
+  locking, it just creates the `requested` `BookingAddon` row directly.
 
 **Booking Management** — partial
 
@@ -841,8 +926,8 @@ Phase 9
       mail infrastructure (Phase 9/10's notifications). A new `emailInvoice`
       table action sends `App\Notifications\InvoiceEmailed`, which renders the
       same `pdf.invoice` view used by `downloadPdf` and attaches it via
-      `MailMessage::attachData()` — no separate Mailable class or duplicated
-      PDF template needed. Covered by `BillingModulesTest`.
+      `MailMessage::attachData()` — no separate Mailable class or duplicated PDF
+      template needed. Covered by `BillingModulesTest`.
 - [x] Mark paid / partial / overdue as an explicit action — automatic now,
       driven by the payment ledger (`Invoice::recalculateStatus()`)
 - [x] Record a payment against an invoice — `PaymentResource` +
@@ -865,8 +950,13 @@ standalone module
 - [ ] DNS TXT record verification before activation
 - [ ] Contact settings / branding
 
-**Email Template Builder & Mass Emailing (tenant)** — not started
+**Email Template Builder & Mass Emailing (tenant)** — templates/campaigns not
+started; the tenant's own outgoing SMTP configuration this will send through
+is done
 
+- [x] Per-tenant outgoing SMTP configuration, separate from the platform's —
+      `App\Filament\Tenant\Pages\MailSettings` (`tenant_mail_settings`, gated
+      by `manage settings`); see the Phase 11 note above
 - [ ] Auto-seed transactional templates per tenant on onboarding
 - [ ] Edit transactional template subject/body
 - [ ] Create / list / edit / delete marketing templates
@@ -874,12 +964,23 @@ standalone module
       only)
 - [ ] Unsubscribe handling
 
-**Reports** — not started
+**Reports** — built as a new tenant-panel page, `App\Filament\Tenant\Pages\Reports`
+(`/tenant/reports`), assembling widgets deliberately kept OUT of
+`app/Filament/Tenant/Widgets` (that directory is auto-discovered onto the
+Dashboard — a report-only widget living there would leak onto it too) under a
+sibling `app/Filament/Tenant/Reports/` namespace instead, attached explicitly
+via `Reports::getHeaderWidgets()`. See `.ai/rules/reports.md` for the
+`$isLazy` trap hit while building/testing these.
 
-- [ ] Revenue by month
-- [ ] Lead conversion rate
-- [ ] Staff performance
-- [ ] Booking status breakdown
+- [x] Revenue by month — `RevenueByMonth` (line chart, last 12 months of
+      completed non-refund payments, grouped in PHP rather than SQL
+      `to_char`/`strftime` so it behaves identically on this app's Postgres
+      production DB and its SQLite test DB — see `.ai/rules/general.md`)
+- [x] Lead conversion rate — `LeadConversionOverview` (total/won/lost counts +
+      won ÷ total as a percentage)
+- [x] Staff performance — reuses the Dashboard's own `StaffPerformance` widget
+- [x] Booking status breakdown — `BookingStatusBreakdown` (doughnut chart)
+      Covered by `tests/Feature/TenantDashboardWidgetsTest.php`.
 
 ### Customer Portal (`/portal`, guard: `customer`) — zero resources exist yet
 
@@ -947,9 +1048,8 @@ BookingAddonRequest`
 - [x] Browse available add-ons — searchable select of active `services`
 - [x] Request / purchase add-on — creates a `requested` `BookingAddon` directly.
       Inventory/capacity locking (`service_availability`) was removed at the
-      user's request (2026-09-11, see the Add-on Services Catalog note above)
-      — every active service can now be requested without an availability
-      check.
+      user's request (2026-09-11, see the Add-on Services Catalog note above) —
+      every active service can now be requested without an availability check.
 
 **Group/Agency View** (conditional on `customer.type`) — built
 
@@ -994,13 +1094,13 @@ BookingAddonRequest`
 
 #ISSUES: 1 Tenant Portal — **Resolved**
 
-- [x] Service availability removed entirely: `ServiceAvailabilityResource` (+ its
-      `Pages`), the `ServiceAvailability` model, its `TenantCatalogPolicy` gate
-      registration, and the `service_availability` table/migration are all gone.
-      `App\Services\BookingAddonRequest` (add-on requests) no longer does any
-      inventory locking — it just creates the `requested` `BookingAddon` row.
-      Verified: `grep -rn "ServiceAvailability\|service_availability"` across
-      `app/`, `tests/`, `database/` returns nothing.
+- [x] Service availability removed entirely: `ServiceAvailabilityResource` (+
+      its `Pages`), the `ServiceAvailability` model, its `TenantCatalogPolicy`
+      gate registration, and the `service_availability` table/migration are all
+      gone. `App\Services\BookingAddonRequest` (add-on requests) no longer does
+      any inventory locking — it just creates the `requested` `BookingAddon`
+      row. Verified: `grep -rn "ServiceAvailability\|service_availability"`
+      across `app/`, `tests/`, `database/` returns nothing.
 - [x] Gift vouchers are now customer-purchased, not tenant-issued.
       `GiftVoucherResource` is view/support-only (`canCreate()` returns `false`,
       `code`/`value`/`currency`/`issued_to` are locked on the edit form — they
@@ -1018,21 +1118,21 @@ BookingAddonRequest`
       a custom per-tenant uniqueness rule (`Closure` rule checking
       `tenant_id`+`code`, excluding the current record on edit).
 - [x] Percent discount capped at 1–99 (`rules(['numeric','min:1','max:99'])`
-      when `discount_type === 'percent'`); flat discount has its own
-      `min:0.01` rule and is entered in normal currency units, stored as minor
-      units via `dehydrateStateUsing`.
+      when `discount_type === 'percent'`); flat discount has its own `min:0.01`
+      rule and is entered in normal currency units, stored as minor units via
+      `dehydrateStateUsing`.
 - [x] `valid_from`/`valid_until` both reject past dates
       (`Carbon::parse($value)->lt(now()->startOfDay())`), and `valid_until`
       additionally rejects being before `valid_from`.
 - [x] Promo code → specific package restriction: `package_promo_code` pivot
       table, `PromoCode::packages(): BelongsToMany`, a multi-select
-      `Select::make('packages')->relationship('packages','name')->multiple()`
-      on the form (empty = applies globally), and
+      `Select::make('packages')->relationship('packages','name')->multiple()` on
+      the form (empty = applies globally), and
       `App\Services\InvoicePromoRedemption::apply()` rejects a code against an
       invoice whose booking's package isn't in the restricted set. Covered by
       `tests/Feature/PromoCodeValidationTest.php` (7 tests, including the
-      package-restriction round trip) and
-      `tests/Feature/CreatePromoCode`-driven cases.
+      package-restriction round trip) and `tests/Feature/CreatePromoCode`-driven
+      cases.
 - [x] List/edit design consistency — `PromoCodeResource`'s table actions are
       grouped the same way as every other resource
       (`ActionGroup::make([EditAction::make(), DeleteAction::make()])`), and its
@@ -1041,23 +1141,25 @@ BookingAddonRequest`
 
 #ISSUES: 2 All portal — **Verified working, no code changes needed**
 
-- [x] "Remember me" — traced end-to-end rather than assumed. Filament's
-      built-in login form always includes the `remember` checkbox; on
-      success it calls `$authGuard->attemptWhen($credentials, ..., $remember)`,
-      which (per Laravel's standard `SessionGuard`) queues a `remember_<guard>_
-      <hash>` cookie and persists the user's `remember_token` (present on all
-      three tables via `$table->rememberToken()` in
+- [x] "Remember me" — traced end-to-end rather than assumed. Filament's built-in
+      login form always includes the `remember` checkbox; on success it calls
+      `$authGuard->attemptWhen($credentials, ..., $remember)`, which (per
+      Laravel's standard `SessionGuard`) queues a
+      `remember_<guard>_
+      <hash>` cookie and persists the user's
+      `remember_token` (present on all three tables via
+      `$table->rememberToken()` in
       `create_super_admins_table`/`create_tenant_users_table`/
       `create_customers_table`). The one real risk was
       `App\Auth\TenantScopedUserProvider` (registered for the `tenant_users`/
       `customers` auth providers to bypass the `BelongsToTenant` global scope
       during login lookups) breaking the recaller cookie's later
-      `retrieveByToken()` call, since that runs *before* any tenant is
-      resolved — but it already overrides `newModelQuery()` to skip global
-      scopes unconditionally, so it works correctly. Confirmed directly: a
-      scratch test driving `Filament\Auth\Pages\Login::authenticate()` with
-      `remember = true` shows a `remember_tenant_<hash>` cookie actually queued
-      via `Cookie::getQueuedCookies()`.
+      `retrieveByToken()` call, since that runs _before_ any tenant is resolved
+      — but it already overrides `newModelQuery()` to skip global scopes
+      unconditionally, so it works correctly. Confirmed directly: a scratch test
+      driving `Filament\Auth\Pages\Login::authenticate()` with `remember = true`
+      shows a `remember_tenant_<hash>` cookie actually queued via
+      `Cookie::getQueuedCookies()`.
 - [x] Forgot password — already enabled on all three panels:
       `->passwordReset()` + `->authPasswordBroker(...)` (`super_admins`/
       `tenant_users`/`customers` respectively) on `AdminPanelProvider`,
@@ -1074,10 +1176,11 @@ BookingAddonRequest`
       `Action::make(...)->submit('savePaypal' | 'saveHbl')`. Saving one gateway
       no longer touches the other's row at all.
 - [x] Required-field validation when a gateway is enabled — every credential
-      field now carries `->required(fn (Get $get): bool =>
-      (bool) $get('enabled'))`, so turning a gateway's toggle on without
-      filling in its credentials is rejected with field-level form errors
-      before anything is saved.
+      field now carries
+      `->required(fn (Get $get): bool =>
+      (bool) $get('enabled'))`, so
+      turning a gateway's toggle on without filling in its credentials is
+      rejected with field-level form errors before anything is saved.
 - [x] Validated on both sides, from one source of truth per gateway rather than
       two hand-kept lists: `PayPalGateway::requiredCredentialKeys()`
       (`client_id`, `client_secret`) and `HblGateway::requiredCredentialKeys()`
@@ -1088,38 +1191,36 @@ BookingAddonRequest`
       data, a direct DB edit, etc.), the gateway is still treated as disabled
       everywhere an invoice actually needs to pay with it (portal, public link,
       "Send payment link"). That's the "API side" half; the page's dynamic
-      `required()` rules are the "UI side" half.
-      Covered by `tests/Feature/PaymentGatewaySettingsTest.php` (8 tests,
-      including one save succeeding while the other gateway's row is left
-      completely untouched, and one rejected-enable-without-credentials test
-      per gateway).
+      `required()` rules are the "UI side" half. Covered by
+      `tests/Feature/PaymentGatewaySettingsTest.php` (8 tests, including one
+      save succeeding while the other gateway's row is left completely
+      untouched, and one rejected-enable-without-credentials test per gateway).
 
 #ISSUES: 4 Booking Screen — **Resolved**
 
 - [x] Full-width cards — every section on `BookingResource`'s form (Booking
       details, Itinerary, Include/exclude list, Upload travel documents,
-      Uploaded documents review, Add-ons) already has `->columnSpanFull()`;
-      none of them sit in a cramped left/right split.
-- [x] Include/exclude is a searchable, filterable checkbox list, not a
-      repeater — `CheckboxList::make('include_exclude_selection')` populated
-      from every `IncludeExclude` catalog item (title labelled with its type,
-      e.g. "Airport transfer (include)"), with each option's `description`
-      shown as helper text under it (the "tooltip" equivalent Filament
-      actually supports). Checking an item snapshots its title/description
-      onto the booking via `Booking::includeExcludes()`; unchecking removes the
-      snapshot. Covered by
+      Uploaded documents review, Add-ons) already has `->columnSpanFull()`; none
+      of them sit in a cramped left/right split.
+- [x] Include/exclude is a searchable, filterable checkbox list, not a repeater
+      — `CheckboxList::make('include_exclude_selection')` populated from every
+      `IncludeExclude` catalog item (title labelled with its type, e.g. "Airport
+      transfer (include)"), with each option's `description` shown as helper
+      text under it (the "tooltip" equivalent Filament actually supports).
+      Checking an item snapshots its title/description onto the booking via
+      `Booking::includeExcludes()`; unchecking removes the snapshot. Covered by
       `tests/Feature/BookingFormExtrasTest.php` ("checking catalog items
       snapshots them onto the booking, and unchecking removes them").
 - [x] Itinerary is a rich text field — `RichEditor::make('booked_itinerary')`
-      with only text-formatting buttons (bold/italic/underline/strike,
-      headings, bullet/ordered lists, blockquote, undo/redo) — deliberately no
-      image or file-upload toolbar buttons, matching the request. Saved as-is,
-      no structured-itinerary coupling (`tests/Feature/BookingFormExtrasTest.php`).
+      with only text-formatting buttons (bold/italic/underline/strike, headings,
+      bullet/ordered lists, blockquote, undo/redo) — deliberately no image or
+      file-upload toolbar buttons, matching the request. Saved as-is, no
+      structured-itinerary coupling (`tests/Feature/BookingFormExtrasTest.php`).
 - [x] Travel documents are no longer one dropdown + one generic upload — each
       document type (Passport, PP size photo, Visa, Insurance, Other) now has
       its own dedicated, individually labelled `FileUpload` field
-      (`document_files.{$docType}`), each independently syncing to that
-      type's `BookingDocument` rows without touching any other type's rows
+      (`document_files.{$docType}`), each independently syncing to that type's
+      `BookingDocument` rows without touching any other type's rows
       (`tests/Feature/BookingFormExtrasTest.php`, "syncing one document type
       never touches another document type's rows").
 - [x] File size validation — every per-type upload field has

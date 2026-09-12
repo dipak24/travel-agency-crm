@@ -2,6 +2,7 @@
 
 namespace App\Filament\Tenant\Resources;
 
+use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Tenant\Resources\BookingResource\Pages;
 use App\Filament\Tenant\Resources\BookingResource\RelationManagers\PaymentsRelationManager;
 use App\Filament\Tenant\Resources\BookingResource\RelationManagers\TravelersRelationManager;
@@ -71,7 +72,7 @@ class BookingResource extends Resource
                     TextInput::make('trip_name')->required()->maxLength(255),
                     Textarea::make('description')->rows(4),
                     TextInput::make('pax_count')->numeric()->integer()->minValue(1)->required()->default(1),
-                    TextInput::make('total_amount')->label('Total (minor units)')->numeric()->integer()->minValue(0)->required()->default(0),
+                    MoneyInput::make('total_amount')->label('Total')->minValue(0)->required()->default(0),
                     Select::make('status')->options([
                         'pending' => 'Pending',
                         'confirmed' => 'Confirmed',
@@ -190,7 +191,7 @@ class BookingResource extends Resource
                         ->schema([
                             Select::make('service_id')->relationship('service', 'name')->searchable()->preload()->required(),
                             TextInput::make('quantity')->label('Quantity')->numeric()->integer()->minValue(1)->default(1)->required(),
-                            TextInput::make('price')->label('Price (minor units)')->numeric()->integer()->minValue(0)->required(),
+                            MoneyInput::make('price')->label('Price')->minValue(0)->required(),
                             Select::make('status')->options([
                                 'requested' => 'Requested',
                                 'approved' => 'Approved',
@@ -215,7 +216,7 @@ class BookingResource extends Resource
             TextColumn::make('customer.name')->label('Customer')->searchable(),
             TextColumn::make('fixedDeparture.start_date')->label('Departure')->date()->sortable(),
             TextColumn::make('pax_count')->label('Pax'),
-            TextColumn::make('total_amount')->label('Total (minor units)')->numeric(),
+            TextColumn::make('total_amount')->label('Total')->money(fn (): string => auth('tenant')->user()->tenant->currency ?? 'USD', divideBy: 100),
             TextColumn::make('status')->badge()->sortable(),
         ])
             ->defaultSort('created_at', 'desc')

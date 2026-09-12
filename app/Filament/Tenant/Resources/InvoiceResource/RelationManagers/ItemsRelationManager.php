@@ -2,6 +2,7 @@
 
 namespace App\Filament\Tenant\Resources\InvoiceResource\RelationManagers;
 
+use App\Filament\Forms\Components\MoneyInput;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -24,27 +25,28 @@ class ItemsRelationManager extends RelationManager
             TextInput::make('qty')
                 ->numeric()->integer()->minValue(1)->required()->default(1)
                 ->live(onBlur: true)
-                ->afterStateUpdated(fn (Get $get, Set $set) => $set('total', (int) $get('qty') * (int) $get('unit_price'))),
-            TextInput::make('unit_price')
-                ->label('Unit price (minor units)')
-                ->numeric()->integer()->minValue(0)->required()
+                ->afterStateUpdated(fn (Get $get, Set $set) => $set('total', round(((float) $get('qty')) * ((float) $get('unit_price')), 2))),
+            MoneyInput::make('unit_price')
+                ->label('Unit price')
+                ->minValue(0)->required()
                 ->live(onBlur: true)
-                ->afterStateUpdated(fn (Get $get, Set $set) => $set('total', (int) $get('qty') * (int) $get('unit_price'))),
-            TextInput::make('total')
-                ->label('Total (minor units)')
-                ->numeric()->integer()->minValue(0)->required(),
+                ->afterStateUpdated(fn (Get $get, Set $set) => $set('total', round(((float) $get('qty')) * ((float) $get('unit_price')), 2))),
+            MoneyInput::make('total')
+                ->minValue(0)->required(),
         ])->columns(3);
     }
 
     public function table(Table $table): Table
     {
+        $currency = fn (): string => $this->getOwnerRecord()->currency;
+
         return $table
             ->recordTitleAttribute('description')
             ->columns([
                 TextColumn::make('description')->searchable(),
                 TextColumn::make('qty')->label('Qty')->numeric(),
-                TextColumn::make('unit_price')->label('Unit price')->numeric(),
-                TextColumn::make('total')->numeric(),
+                TextColumn::make('unit_price')->label('Unit price')->money($currency, divideBy: 100),
+                TextColumn::make('total')->money($currency, divideBy: 100),
             ])
             ->defaultSort('id')
             ->headerActions([CreateAction::make()])

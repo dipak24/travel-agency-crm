@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\GiftVoucher;
 use App\Models\Invoice;
 use App\Notifications\GiftVoucherPurchased;
+use App\Services\Mail\TenantMailer;
 use Illuminate\Support\Str;
 use LogicException;
 
@@ -63,7 +64,9 @@ class GiftVoucherPurchase
             'status' => 'unredeemed',
         ]);
 
-        $invoice->customer?->notify(new GiftVoucherPurchased($voucher));
+        if ($customer = $invoice->customer) {
+            app(TenantMailer::class)->send($invoice->tenant_id, $customer, new GiftVoucherPurchased($voucher));
+        }
     }
 
     private function generateUniqueCode(): string

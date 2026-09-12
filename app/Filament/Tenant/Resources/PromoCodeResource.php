@@ -4,6 +4,7 @@ namespace App\Filament\Tenant\Resources;
 
 use App\Filament\Tenant\Resources\PromoCodeResource\Pages;
 use App\Models\PromoCode;
+use App\Support\Money;
 use App\Support\TenantContext;
 use BackedEnum;
 use Carbon\Carbon;
@@ -82,11 +83,11 @@ class PromoCodeResource extends Resource
                     : ['numeric', 'min:0.01'])
                 ->afterStateHydrated(function (TextInput $component, $state, Get $get): void {
                     if ($get('discount_type') === 'flat' && filled($state)) {
-                        $component->state(round(((int) $state) / 100, 2));
+                        $component->state(Money::toDecimal($state));
                     }
                 })
                 ->dehydrateStateUsing(fn ($state, Get $get) => $get('discount_type') === 'flat'
-                    ? (int) round(((float) $state) * 100)
+                    ? Money::toCents($state)
                     : (int) $state),
             TextInput::make('usage_limit')->numeric()->integer()->minValue(1)->helperText('Leave blank for unlimited uses.'),
             TextInput::make('used_count')->numeric()->integer()->minValue(0)->disabled()->dehydrated(false)->hiddenOn('create'),
@@ -135,7 +136,10 @@ class PromoCodeResource extends Resource
         return $table->columns([
             TextColumn::make('code')->searchable()->sortable(),
             TextColumn::make('discount_type')->badge(),
-            TextColumn::make('discount_value')->numeric(),
+            TextColumn::make('discount_value')
+                ->formatStateUsing(fn (PromoCode $record, $state): string => $record->discount_type === 'flat'
+                    ? Money::format($state, auth('tenant')->user()->tenant->currency ?? 'USD')
+                    : "{$state}%"),
             TextColumn::make('packages_count')->counts('packages')->label('Scope')
                 ->formatStateUsing(fn (int $state): string => $state > 0 ? "{$state} package(s)" : 'Global'),
             TextColumn::make('usage_limit')->placeholder('Unlimited'),

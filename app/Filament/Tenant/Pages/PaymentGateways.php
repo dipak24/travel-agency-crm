@@ -12,6 +12,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\EmbeddedSchema;
 use Filament\Schemas\Components\Form;
 use Filament\Schemas\Components\Section;
@@ -85,10 +86,12 @@ class PaymentGateways extends Page
             ->components([
                 Section::make('PayPal')
                     ->description('Merchant credentials from your PayPal Developer app. Used for both the customer portal and public payment links.')
-                    ->headerActions([
-                        Action::make('savePaypal')
-                            ->label('Save PayPal settings')
-                            ->submit('savePaypal'),
+                    ->footer([
+                        Actions::make([
+                            Action::make('savePaypal')
+                                ->label('Save PayPal settings')
+                                ->submit('savePaypal'),
+                        ])->alignEnd(),
                     ])
                     ->schema([
                         Toggle::make('enabled')->label('Enabled')->live(),
@@ -116,10 +119,12 @@ class PaymentGateways extends Page
             ->components([
                 Section::make('HBL')
                     ->description('Merchant credentials issued by HBL for their 2C2P PACO-based gateway.')
-                    ->headerActions([
-                        Action::make('saveHbl')
-                            ->label('Save HBL settings')
-                            ->submit('saveHbl'),
+                    ->footer([
+                        Actions::make([
+                            Action::make('saveHbl')
+                                ->label('Save HBL settings')
+                                ->submit('saveHbl'),
+                        ])->alignEnd(),
                     ])
                     ->schema([
                         Toggle::make('enabled')->label('Enabled')->live(),

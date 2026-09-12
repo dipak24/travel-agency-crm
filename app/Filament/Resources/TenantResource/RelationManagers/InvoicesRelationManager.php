@@ -29,8 +29,8 @@ class InvoicesRelationManager extends RelationManager
                         'cancelled' => 'gray',
                         default => 'info',
                     }),
-                TextColumn::make('total')->numeric(),
-                TextColumn::make('balance_due')->label('Balance due')->state(fn (TenantInvoice $record): int => $record->balanceDue()),
+                TextColumn::make('total')->money(fn (TenantInvoice $record): string => $record->currency, divideBy: 100),
+                TextColumn::make('balance_due')->label('Balance due')->state(fn (TenantInvoice $record): int => $record->balanceDue())->money(fn (TenantInvoice $record): string => $record->currency, divideBy: 100),
                 TextColumn::make('due_date')->date('M j, Y')->placeholder('—'),
             ])
             ->defaultSort('created_at', 'desc')

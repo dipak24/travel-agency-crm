@@ -364,8 +364,8 @@ test('a tenant owner can create an invoice from a booking and record a payment a
 
     Livewire::actingAs($owner, 'tenant')->test(CreateInvoice::class)
         ->set('data.booking_id', $booking->id)
-        ->set('data.amount', 100000)
-        ->set('data.total', 100000)
+        ->set('data.amount', 1000)
+        ->set('data.total', 1000)
         ->set('data.status', 'issued')
         ->call('create')
         ->assertHasNoFormErrors();
@@ -400,8 +400,8 @@ test('an accountant can create an invoice from a booking and record a payment ag
 
     Livewire::actingAs($accountant, 'tenant')->test(CreateInvoice::class)
         ->set('data.booking_id', $booking->id)
-        ->set('data.amount', 50000)
-        ->set('data.total', 50000)
+        ->set('data.amount', 500)
+        ->set('data.total', 500)
         ->set('data.status', 'issued')
         ->call('create')
         ->assertHasNoFormErrors();

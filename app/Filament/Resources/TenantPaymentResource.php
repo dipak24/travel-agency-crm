@@ -2,9 +2,11 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Resources\TenantPaymentResource\Pages;
 use App\Models\TenantInvoice;
 use App\Models\TenantPayment;
+use App\Support\Money;
 use BackedEnum;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
@@ -53,11 +55,11 @@ class TenantPaymentResource extends Resource
                                 $invoice = TenantInvoice::query()->withoutGlobalScopes()->find($get('tenant_invoice_id'));
 
                                 if ($invoice) {
-                                    $set('amount', $invoice->balanceDue());
+                                    $set('amount', Money::toDecimal($invoice->balanceDue()));
                                     $set('currency', $invoice->currency);
                                 }
                             }),
-                        TextInput::make('amount')->label('Amount (minor units)')->numeric()->integer()->minValue(0)->required(),
+                        MoneyInput::make('amount')->label('Amount')->minValue(0)->required(),
                         Select::make('currency')->options([
                             'USD' => 'USD', 'EUR' => 'EUR', 'GBP' => 'GBP', 'AUD' => 'AUD',
                             'CAD' => 'CAD', 'AED' => 'AED', 'INR' => 'INR', 'NPR' => 'NPR', 'JPY' => 'JPY',
@@ -100,7 +102,7 @@ class TenantPaymentResource extends Resource
             ->columns([
                 TextColumn::make('invoice.invoice_no')->label('Invoice')->searchable()->sortable(),
                 TextColumn::make('invoice.tenant.name')->label('Tenant')->searchable(),
-                TextColumn::make('amount')->numeric()->sortable(),
+                TextColumn::make('amount')->money(fn (TenantPayment $record): string => $record->currency, divideBy: 100)->sortable(),
                 TextColumn::make('type')->badge(),
                 TextColumn::make('method')->badge()->color('gray'),
                 TextColumn::make('status')->badge()

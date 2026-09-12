@@ -4,6 +4,7 @@ namespace App\Filament\Portal\Resources;
 
 use App\Filament\Portal\Resources\InvoiceResource\Pages;
 use App\Models\Invoice;
+use App\Models\Payment;
 use BackedEnum;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -58,7 +59,7 @@ class InvoiceResource extends Resource
             ->columns([
                 TextColumn::make('invoice_no')->label('Invoice')->searchable()->sortable(),
                 TextColumn::make('booking.trip_name')->label('Booking'),
-                TextColumn::make('total')->label('Total')->numeric()->sortable(),
+                TextColumn::make('total')->label('Total')->money(fn (Invoice $record): string => $record->currency, divideBy: 100)->sortable(),
                 TextColumn::make('status')->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'paid' => 'success',
@@ -80,11 +81,11 @@ class InvoiceResource extends Resource
                     TextEntry::make('invoice_no')->label('Invoice number'),
                     TextEntry::make('status')->badge(),
                     TextEntry::make('due_date')->date(),
-                    TextEntry::make('amount')->label('Subtotal'),
-                    TextEntry::make('tax'),
-                    TextEntry::make('discount'),
-                    TextEntry::make('total'),
-                    TextEntry::make('balance')->label('Balance due')->state(fn (Invoice $record): int => $record->balanceDue()),
+                    TextEntry::make('amount')->label('Subtotal')->money(fn (Invoice $record): string => $record->currency, divideBy: 100),
+                    TextEntry::make('tax')->money(fn (Invoice $record): string => $record->currency, divideBy: 100),
+                    TextEntry::make('discount')->money(fn (Invoice $record): string => $record->currency, divideBy: 100),
+                    TextEntry::make('total')->money(fn (Invoice $record): string => $record->currency, divideBy: 100),
+                    TextEntry::make('balance')->label('Balance due')->state(fn (Invoice $record): int => $record->balanceDue())->money(fn (Invoice $record): string => $record->currency, divideBy: 100),
                 ])
                 ->columns(4),
             Section::make('Items')
@@ -94,8 +95,10 @@ class InvoiceResource extends Resource
                         ->schema([
                             TextEntry::make('description'),
                             TextEntry::make('qty')->label('Qty'),
-                            TextEntry::make('unit_price')->label('Unit price'),
-                            TextEntry::make('total'),
+                            TextEntry::make('unit_price')->label('Unit price')
+                                ->money(fn (): string => auth('customer')->user()->tenant?->currency ?? 'USD', divideBy: 100),
+                            TextEntry::make('total')
+                                ->money(fn (): string => auth('customer')->user()->tenant?->currency ?? 'USD', divideBy: 100),
                         ])
                         ->columns(4)
                         ->contained(false),
@@ -106,7 +109,7 @@ class InvoiceResource extends Resource
                     RepeatableEntry::make('payments')
                         ->label('')
                         ->schema([
-                            TextEntry::make('amount'),
+                            TextEntry::make('amount')->money(fn (Payment $record): string => $record->currency, divideBy: 100),
                             TextEntry::make('method')->badge(),
                             TextEntry::make('type')->badge(),
                             TextEntry::make('status')->badge(),

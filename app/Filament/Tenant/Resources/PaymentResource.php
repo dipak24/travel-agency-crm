@@ -2,10 +2,12 @@
 
 namespace App\Filament\Tenant\Resources;
 
+use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Tenant\Resources\PaymentResource\Pages;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Services\PaymentGateways\PaymentGatewayResolver;
+use App\Support\Money;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DateTimePicker;
@@ -48,11 +50,11 @@ class PaymentResource extends Resource
                     $invoice = Invoice::query()->find($get('invoice_id'));
 
                     if ($invoice) {
-                        $set('amount', $invoice->balanceDue());
+                        $set('amount', Money::toDecimal($invoice->balanceDue()));
                         $set('currency', $invoice->currency);
                     }
                 }),
-            TextInput::make('amount')->label('Amount (minor units)')->numeric()->integer()->minValue(0)->required(),
+            MoneyInput::make('amount')->label('Amount')->minValue(0)->required(),
             TextInput::make('currency')->maxLength(3)->required()->default('USD'),
             Select::make('method')->options([
                 'bank_transfer' => 'Bank transfer',
@@ -85,7 +87,7 @@ class PaymentResource extends Resource
             ->columns([
                 TextColumn::make('invoice.invoice_no')->label('Invoice')->searchable()->sortable(),
                 TextColumn::make('invoice.customer.name')->label('Customer')->searchable(),
-                TextColumn::make('amount')->numeric()->sortable(),
+                TextColumn::make('amount')->money(fn (Payment $record): string => $record->currency, divideBy: 100)->sortable(),
                 TextColumn::make('type')->badge(),
                 TextColumn::make('method')->badge()->color('gray'),
                 TextColumn::make('status')->badge()
