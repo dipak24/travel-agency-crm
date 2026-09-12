@@ -9,6 +9,7 @@ use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use RuntimeException;
 
 class WebhookController extends Controller
@@ -26,7 +27,7 @@ class WebhookController extends Controller
                 $invoiceModel->tenant,
                 fn () => $resolver->for($gateway)->handleWebhook($request, $invoiceModel),
             );
-        } catch (RuntimeException $e) {
+        } catch (RuntimeException|InvalidArgumentException $e) {
             Log::warning('Payment webhook rejected.', ['gateway' => $gateway, 'invoice_id' => $invoice, 'message' => $e->getMessage()]);
 
             return response('', 400);

@@ -128,7 +128,13 @@ class MailSettings extends Page
             return;
         }
 
-        app(TenantMailer::class)->send(null, $user, new TestMailSettingNotification);
+        $sent = app(TenantMailer::class)->send(null, $user, new TestMailSettingNotification);
+
+        if (! $sent) {
+            Notification::make()->danger()->title('Test email failed to send')->body('Check your SMTP host, port, and credentials.')->send();
+
+            return;
+        }
 
         Notification::make()->success()->title("Test email sent to {$user->email}")->send();
     }

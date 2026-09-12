@@ -93,33 +93,18 @@ class PromoCodeResource extends Resource
             TextInput::make('used_count')->numeric()->integer()->minValue(0)->disabled()->dehydrated(false)->hiddenOn('create'),
             DateTimePicker::make('valid_from')
                 ->native(false)
-                ->rules([
-                    fn (): Closure => function (string $attribute, $value, Closure $fail): void {
-                        if (filled($value) && Carbon::parse($value)->lt(now()->startOfDay())) {
-                            $fail('Valid from cannot be a past date.');
-                        }
-                    },
+                ->live()
+                ->minDate(now())
+                ->validationMessages([
+                    'after_or_equal' => 'Valid from cannot be a past date.',
                 ]),
             DateTimePicker::make('valid_until')
                 ->native(false)
-                ->rules(fn (Get $get): array => [
-                    function (string $attribute, $value, Closure $fail) use ($get): void {
-                        if (blank($value)) {
-                            return;
-                        }
-
-                        if (Carbon::parse($value)->lt(now()->startOfDay())) {
-                            $fail('Valid until cannot be a past date.');
-
-                            return;
-                        }
-
-                        $validFrom = $get('valid_from');
-
-                        if (filled($validFrom) && Carbon::parse($value)->lt(Carbon::parse($validFrom))) {
-                            $fail('Valid until must be on or after the valid from date.');
-                        }
-                    },
+                ->minDate(fn (Get $get): Carbon => filled($get('valid_from'))
+                    ? Carbon::parse($get('valid_from'))->addHours(24)
+                    : now()->addHours(24))
+                ->validationMessages([
+                    'after_or_equal' => 'Valid until must be at least 24 hours after the valid from date.',
                 ]),
             Select::make('packages')
                 ->relationship('packages', 'name')

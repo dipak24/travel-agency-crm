@@ -175,7 +175,7 @@ test('two tenants sending in the same process each get their own mailer with no 
         ->and($probeA->seen['default'])->not->toBe($probeB->seen['default']);
 });
 
-test('the original mail config is restored even if the notification throws', function () {
+test('a failed send is caught, logged, and returns false, and the original mail config is still restored', function () {
     $tenant = Tenant::query()->create(['name' => 'Northwind Travel', 'slug' => 'northwind-travel']);
     app(TenantContext::class)->set($tenant);
     TenantMailSetting::query()->create([
@@ -196,8 +196,8 @@ test('the original mail config is restored even if the notification throws', fun
         }
     };
 
-    expect(fn () => app(TenantMailer::class)->send($tenant->id, $throwingNotifiable, new TestMailSettingNotification))
-        ->toThrow(RuntimeException::class);
+    $sent = app(TenantMailer::class)->send($tenant->id, $throwingNotifiable, new TestMailSettingNotification);
 
-    expect(config('mail.default'))->toBe($originalDefault);
+    expect($sent)->toBeFalse()
+        ->and(config('mail.default'))->toBe($originalDefault);
 });

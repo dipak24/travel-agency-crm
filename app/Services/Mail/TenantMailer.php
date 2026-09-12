@@ -5,6 +5,8 @@ namespace App\Services\Mail;
 use App\Models\PlatformMailSetting;
 use App\Models\TenantMailSetting;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Routes an outbound notification through the right SMTP account: the notifiable's own tenant
@@ -17,16 +19,33 @@ use Illuminate\Notifications\Notification;
  * Every notification in this app sends synchronously (none implement ShouldQueue), so swapping
  * mail.default/mail.from for the duration of one notify() call and restoring it in a finally block
  * is safe — it never leaks into another tenant's request or a reused queue-worker process.
+ *
+ * A delivery failure (bad tenant-configured SMTP host/credentials, connection timeout, etc.) is
+ * caught and logged here rather than left to propagate — a broken mail account must never abort
+ * the business action a notification rides along with (saving a booking/invoice, purchasing a gift
+ * voucher). send() returns false on failure so a caller whose whole point is sending mail (send a
+ * test email, email an invoice, send a payment link) can still tell the user it didn't go out.
  */
 class TenantMailer
 {
-    public function send(?int $tenantId, object $notifiable, Notification $notification): void
+    public function send(?int $tenantId, object $notifiable, Notification $notification): bool
     {
         $original = ['mail.default' => config('mail.default'), 'mail.from' => config('mail.from')];
         $configured = $this->configureMailerFor($tenantId);
 
         try {
             $notifiable->notify($notification);
+
+            return true;
+        } catch (Throwable $e) {
+            Log::error('Outbound mail failed to send.', [
+                'tenant_id' => $tenantId,
+                'notifiable' => $notifiable::class,
+                'notification' => $notification::class,
+                'message' => $e->getMessage(),
+            ]);
+
+            return false;
         } finally {
             if ($configured) {
                 config($original);

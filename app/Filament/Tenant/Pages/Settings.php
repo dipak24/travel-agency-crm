@@ -83,7 +83,7 @@ class Settings extends Page
                         ->visibility('public')
                         ->imagePreviewHeight('120')
                         ->maxSize(2048)
-                        ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'])
+                        ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp'])
                         ->columnSpanFull(),
                 ])
                 ->columns(2),

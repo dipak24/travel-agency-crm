@@ -16,6 +16,7 @@ use App\Models\TenantUser;
 use App\Notifications\InvoiceEmailed;
 use App\Policies\InvoicePolicy;
 use App\Policies\PaymentPolicy;
+use App\Services\Mail\TenantMailer;
 use App\Support\TenantContext;
 use Database\Seeders\PermissionSeeder;
 use Filament\Actions\Testing\TestAction;
@@ -297,6 +298,37 @@ test('a tenant staff member can email an invoice PDF to the customer', function 
         ->callAction(TestAction::make('emailInvoice')->table($invoice));
 
     Notification::assertSentTo($customer, InvoiceEmailed::class, fn (InvoiceEmailed $notification): bool => $notification->invoice->is($invoice));
+});
+
+test('a failed invoice email shows a failure notification instead of a raw error', function () {
+    $tenant = billingTenant('Northwind Travel', 'northwind-travel');
+    $this->seed();
+
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
+    $owner->assignRole($ownerRole);
+
+    $customer = Customer::factory()->create(['email' => 'traveler@example.com']);
+    $booking = Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Alpine Escape']);
+    $invoice = Invoice::query()->create([
+        'booking_id' => $booking->id,
+        'customer_id' => $customer->id,
+        'amount' => 150000,
+        'total' => 150000,
+        'currency' => 'USD',
+        'status' => 'issued',
+    ]);
+
+    $failingMailer = Mockery::mock(TenantMailer::class);
+    $failingMailer->shouldReceive('send')->once()->andReturn(false);
+    app()->instance(TenantMailer::class, $failingMailer);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(ListInvoices::class)
+        ->callAction(TestAction::make('emailInvoice')->table($invoice))
+        ->assertNotified('Invoice failed to send');
 });
 
 test('a tenant staff member can create a new guest customer inline while invoicing a booking', function () {

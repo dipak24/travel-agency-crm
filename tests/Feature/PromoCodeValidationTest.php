@@ -131,6 +131,46 @@ test('valid from and valid until reject past dates and out-of-order ranges', fun
     )->call('create')->assertHasFormErrors(['valid_until']);
 });
 
+test('valid until must be at least 24 hours after valid from', function () {
+    test()->seed();
+    $staff = promoCodeStaff();
+
+    $validFrom = now()->addDay();
+
+    fillPromoCodeForm(
+        Livewire::actingAs($staff, 'tenant')->test(CreatePromoCode::class),
+        [
+            'code' => 'SAMETIME',
+            'discount_type' => 'percent',
+            'discount_value' => 10,
+            'valid_from' => $validFrom->toDateTimeString(),
+            'valid_until' => $validFrom->toDateTimeString(),
+        ],
+    )->call('create')->assertHasFormErrors(['valid_until']);
+
+    fillPromoCodeForm(
+        Livewire::actingAs($staff, 'tenant')->test(CreatePromoCode::class),
+        [
+            'code' => 'TOOSOON1',
+            'discount_type' => 'percent',
+            'discount_value' => 10,
+            'valid_from' => $validFrom->toDateTimeString(),
+            'valid_until' => $validFrom->copy()->addHours(23)->toDateTimeString(),
+        ],
+    )->call('create')->assertHasFormErrors(['valid_until']);
+
+    fillPromoCodeForm(
+        Livewire::actingAs($staff, 'tenant')->test(CreatePromoCode::class),
+        [
+            'code' => 'ENOUGH24',
+            'discount_type' => 'percent',
+            'discount_value' => 10,
+            'valid_from' => $validFrom->toDateTimeString(),
+            'valid_until' => $validFrom->copy()->addHours(24)->toDateTimeString(),
+        ],
+    )->call('create')->assertHasNoFormErrors();
+});
+
 test('a promo code restricted to specific packages only applies to invoices for those packages', function () {
     test()->seed();
     app(TenantContext::class)->set(TenantUser::query()->withoutGlobalScopes()->where('email', 'staff@example.com')->firstOrFail()->tenant);

@@ -101,7 +101,13 @@ class CustomerResource extends Resource
                         $token = Password::broker('customers')->createToken($record);
                         $url = Filament::getPanel('portal')->getResetPasswordUrl($token, $record);
 
-                        app(TenantMailer::class)->send($record->tenant_id, $record, new CustomerPortalInvite($url));
+                        $sent = app(TenantMailer::class)->send($record->tenant_id, $record, new CustomerPortalInvite($url));
+
+                        if (! $sent) {
+                            Notification::make()->title('Invite failed to send')->body('Check the tenant\'s mail settings.')->danger()->send();
+
+                            return;
+                        }
 
                         Notification::make()
                             ->title('Invite sent')

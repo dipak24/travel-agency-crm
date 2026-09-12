@@ -11,7 +11,9 @@ use App\Models\TenantUser;
 use App\Support\TenantContext;
 use Filament\Actions\Testing\TestAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 
@@ -91,6 +93,34 @@ test('a platform admin can create a tenant with an owner and a subscription plan
         ->where('tenant_id', $tenant->getKey())
         ->where('plan_id', $plan->getKey())
         ->exists())->toBeTrue();
+});
+
+test('the tenant logo upload rejects SVG files to prevent stored XSS via the public disk', function () {
+    Storage::fake('public');
+    $this->seed();
+
+    $admin = SuperAdmin::query()->where('email', 'admin@example.com')->firstOrFail();
+    $plan = SubscriptionPlan::query()->create(['name' => 'Growth', 'price' => 10000, 'billing_cycle' => 'monthly']);
+
+    $test = Livewire::actingAs($admin, 'super_admin')->test(CreateTenant::class);
+
+    fillTenantForm($test, [
+        'name' => 'Malicious Agency',
+        'slug' => 'malicious-agency',
+        'status' => 'trial',
+        'billing_email' => 'billing@malicious-agency.test',
+        'timezone' => 'UTC',
+        'currency' => 'USD',
+        'owner_name' => 'Agency Owner',
+        'owner_email' => 'owner@malicious-agency.test',
+        'owner_password' => 'Sup3rSecret!',
+        'plan_id' => $plan->getKey(),
+        'logo' => UploadedFile::fake()->create('logo.svg', 10, 'image/svg+xml'),
+    ])
+        ->call('create')
+        ->assertHasFormErrors(['logo']);
+
+    expect(Tenant::query()->where('slug', 'malicious-agency')->exists())->toBeFalse();
 });
 
 test('creating a tenant rejects an owner email already used by staff in another tenant', function () {

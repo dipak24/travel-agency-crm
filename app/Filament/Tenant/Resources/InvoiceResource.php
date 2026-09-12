@@ -30,7 +30,9 @@ use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
+use Throwable;
 use UnitEnum;
 
 class InvoiceResource extends Resource
@@ -128,8 +130,17 @@ class InvoiceResource extends Resource
                         ->action(function (Invoice $record) {
                             $record->loadMissing(['tenant', 'customer', 'booking']);
 
+                            try {
+                                $output = Pdf::loadView('pdf.invoice', ['invoice' => $record])->output();
+                            } catch (Throwable $e) {
+                                Log::error('Invoice PDF generation failed.', ['invoice_id' => $record->id, 'message' => $e->getMessage()]);
+                                Notification::make()->title('Could not generate the PDF')->danger()->send();
+
+                                return null;
+                            }
+
                             return response()->streamDownload(
-                                fn () => print (Pdf::loadView('pdf.invoice', ['invoice' => $record])->output()),
+                                fn () => print ($output),
                                 "{$record->invoice_no}.pdf",
                             );
                         }),
@@ -139,7 +150,13 @@ class InvoiceResource extends Resource
                         ->requiresConfirmation()
                         ->modalDescription(fn (Invoice $record): string => "Email a PDF copy of this invoice to {$record->customer?->email}?")
                         ->action(function (Invoice $record): void {
-                            app(TenantMailer::class)->send($record->tenant_id, $record->customer, new InvoiceEmailed($record));
+                            $sent = app(TenantMailer::class)->send($record->tenant_id, $record->customer, new InvoiceEmailed($record));
+
+                            if (! $sent) {
+                                Notification::make()->title('Invoice failed to send')->body('Check the tenant\'s mail settings.')->danger()->send();
+
+                                return;
+                            }
 
                             Notification::make()->title('Invoice emailed')->success()->send();
                         }),
@@ -152,7 +169,13 @@ class InvoiceResource extends Resource
                         ->action(function (Invoice $record): void {
                             $url = URL::temporarySignedRoute('public.pay.show', now()->addDays(14), ['invoice' => $record->id]);
 
-                            app(TenantMailer::class)->send($record->tenant_id, $record->customer, new InvoicePaymentLink($record, $url));
+                            $sent = app(TenantMailer::class)->send($record->tenant_id, $record->customer, new InvoicePaymentLink($record, $url));
+
+                            if (! $sent) {
+                                Notification::make()->title('Payment link failed to send')->body('Check the tenant\'s mail settings.')->danger()->send();
+
+                                return;
+                            }
 
                             Notification::make()->title('Payment link sent')->success()->send();
                         }),

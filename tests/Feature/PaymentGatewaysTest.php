@@ -211,6 +211,17 @@ test('a webhook for an unknown invoice is rejected with a 404 rather than crashi
         ->assertStatus(404);
 });
 
+test('a webhook for an unknown gateway key is rejected with a 400 rather than crashing', function () {
+    $tenant = paymentGatewayTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $customer = Customer::factory()->create();
+    $invoice = paymentGatewayInvoice($customer);
+    app(TenantContext::class)->clear();
+
+    $this->postJson("/webhooks/not-a-real-gateway/{$invoice->id}", ['event_type' => 'PAYMENT.CAPTURE.COMPLETED'])
+        ->assertStatus(400);
+});
+
 test('refunding a completed paypal payment calls the gateway and records a refund entry', function () {
     $tenant = paymentGatewayTenant('Northwind Travel', 'northwind-travel');
     app(TenantContext::class)->set($tenant);

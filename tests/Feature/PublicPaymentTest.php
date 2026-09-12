@@ -101,6 +101,35 @@ test('starting a public checkout redirects to the gateway and works without any 
     $this->get($startUrl)->assertRedirect('https://sandbox.paypal.com/checkoutnow?token=ORDER123');
 });
 
+test('the public checkout start route is rate limited', function () {
+    $tenant = publicPayTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    TenantPaymentGateway::query()->create([
+        'tenant_id' => $tenant->id,
+        'gateway' => 'paypal',
+        'enabled' => true,
+        'credentials' => ['mode' => 'sandbox', 'client_id' => 'id', 'client_secret' => 'secret', 'webhook_id' => 'wh'],
+    ]);
+    $customer = Customer::factory()->create();
+    $invoice = publicPayInvoice($customer, ['total' => 50000]);
+
+    $startUrl = URL::temporarySignedRoute('public.pay.start', now()->addMinutes(30), ['gateway' => 'paypal', 'invoice' => $invoice->id]);
+
+    Http::fake([
+        '*/v1/oauth2/token' => Http::response(['access_token' => 'token-123'], 200),
+        '*/v2/checkout/orders' => Http::response([
+            'id' => 'ORDER123',
+            'links' => [['rel' => 'approve', 'href' => 'https://sandbox.paypal.com/checkoutnow?token=ORDER123']],
+        ], 201),
+    ]);
+
+    for ($i = 0; $i < 20; $i++) {
+        $this->get($startUrl)->assertRedirect('https://sandbox.paypal.com/checkoutnow?token=ORDER123');
+    }
+
+    $this->get($startUrl)->assertStatus(429);
+});
+
 test('the public return page reflects success, pending, and failure without needing a login', function () {
     $tenant = publicPayTenant('Northwind Travel', 'northwind-travel');
     app(TenantContext::class)->set($tenant);
