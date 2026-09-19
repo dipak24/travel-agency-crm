@@ -143,6 +143,13 @@ return new class extends Migration
             $table->unsignedBigInteger('value')->default(0);
             $table->string('currency', 3)->default('USD');
             $table->foreignId('issued_to')->nullable()->constrained('customers')->nullOnDelete();
+            // Who the voucher was actually bought for — a free-text snapshot, not a `customers` FK,
+            // since a recipient often has no portal account of their own. `issued_to` above is a
+            // best-effort link to a matching Customer (by email), used only to gate redemption.
+            $table->string('recipient_first_name')->nullable();
+            $table->string('recipient_last_name')->nullable();
+            $table->string('recipient_email')->nullable();
+            $table->string('recipient_phone')->nullable();
             $table->string('status')->default('unredeemed');
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
@@ -205,6 +212,13 @@ return new class extends Migration
             $table->string('purpose')->nullable();
             $table->date('due_date')->nullable();
             $table->foreignId('issued_by')->nullable()->constrained('tenant_users')->nullOnDelete();
+            // Who actually placed the order — only populated for purpose = gift_voucher_purchase.
+            // A snapshot (not just customer_id) since the buyer can edit these for this one order
+            // without touching their account (e.g. a different phone number for this purchase).
+            $table->string('purchaser_first_name')->nullable();
+            $table->string('purchaser_last_name')->nullable();
+            $table->string('purchaser_email')->nullable();
+            $table->string('purchaser_phone')->nullable();
             $table->timestamps();
             $table->softDeletes();
             $table->unique(['tenant_id', 'invoice_no']);
@@ -219,14 +233,22 @@ return new class extends Migration
             $table->unsignedInteger('qty')->default(1);
             $table->unsignedBigInteger('unit_price')->default(0);
             $table->unsignedBigInteger('total')->default(0);
+            // One gift-voucher purchase can send the same amount to several recipients — each
+            // recipient is its own line item here, and mints its own GiftVoucher once the invoice
+            // is fully paid (see GiftVoucherPurchase::fulfill()). Null for every non-gift line item.
+            $table->string('recipient_first_name')->nullable();
+            $table->string('recipient_last_name')->nullable();
+            $table->string('recipient_email')->nullable();
+            $table->string('recipient_phone')->nullable();
             $table->timestamps();
             $table->index(['tenant_id', 'invoice_id']);
         });
 
-        // gift_vouchers is created earlier in this file, before `invoices` exists — the FK to
-        // invoices has to be added here instead of inline in that Schema::create() block.
+        // gift_vouchers is created earlier in this file, before `invoices`/`invoice_items` exist —
+        // these FKs have to be added here instead of inline in that Schema::create() block.
         Schema::table('gift_vouchers', function (Blueprint $table): void {
             $table->foreignId('source_invoice_id')->nullable()->after('issued_to')->constrained('invoices')->nullOnDelete();
+            $table->foreignId('source_invoice_item_id')->nullable()->after('source_invoice_id')->unique()->constrained('invoice_items')->nullOnDelete();
         });
 
         Schema::create('payments', function (Blueprint $table): void {

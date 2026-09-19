@@ -21,10 +21,20 @@ class ResolveTenant
             $this->tenantContext->set($user->tenant);
         }
 
-        try {
-            return $next($request);
-        } finally {
-            $this->tenantContext->clear();
-        }
+        return $next($request);
+    }
+
+    /**
+     * Clearing the tenant context here (rather than in a `finally` around `$next()` in
+     * `handle()`) matters because Livewire replays persistent middleware like this one
+     * against an isolated pipeline that terminates immediately (see
+     * `Livewire\Drawer\Utils::applyMiddleware()`), before the actual component method
+     * runs. A `finally` block would clear the context right after setting it, on every
+     * Livewire update request. `terminate()` only runs once, after the real request
+     * has fully completed.
+     */
+    public function terminate(Request $request, Response $response): void
+    {
+        $this->tenantContext->clear();
     }
 }

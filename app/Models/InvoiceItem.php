@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
@@ -19,6 +20,10 @@ class InvoiceItem extends Model
         'qty',
         'unit_price',
         'total',
+        'recipient_first_name',
+        'recipient_last_name',
+        'recipient_email',
+        'recipient_phone',
     ];
 
     protected function casts(): array
@@ -38,6 +43,16 @@ class InvoiceItem extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function giftVoucher(): HasOne
+    {
+        return $this->hasOne(GiftVoucher::class, 'source_invoice_item_id');
+    }
+
+    public function recipientName(): ?string
+    {
+        return trim("{$this->recipient_first_name} {$this->recipient_last_name}") ?: null;
     }
 
     public function getActivitylogOptions(): LogOptions

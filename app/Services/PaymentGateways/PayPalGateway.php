@@ -23,6 +23,11 @@ class PayPalGateway implements PaymentGateway
         return 'paypal';
     }
 
+    public function label(): string
+    {
+        return 'PayPal';
+    }
+
     public function isEnabledFor(Invoice $invoice): bool
     {
         $settings = $this->settingsFor($invoice);

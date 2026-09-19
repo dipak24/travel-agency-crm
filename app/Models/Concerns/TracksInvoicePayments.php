@@ -26,6 +26,33 @@ trait TracksInvoicePayments
     }
 
     /**
+     * How much of paidAmount() came from redeeming a gift voucher — shown as its own line in the
+     * "Order summary" breakdown. A redemption is a Payment (method=gift_voucher), not a change to
+     * `discount`/`total`, so this has to be summed from the ledger rather than read off a column.
+     */
+    public function giftVoucherAppliedAmount(): int
+    {
+        $completed = $this->payments()->where('method', 'gift_voucher')->where('status', 'completed');
+
+        $received = (int) (clone $completed)->where('type', '!=', 'refund')->sum('amount');
+        $refunded = (int) (clone $completed)->where('type', 'refund')->sum('amount');
+
+        return $received - $refunded;
+    }
+
+    /**
+     * The payment method shown as an invoice's "Mode" in list views — the most recent completed
+     * payment's method, or null if nothing has been paid yet.
+     */
+    public function latestPaymentMethod(): ?string
+    {
+        return $this->payments()
+            ->where('status', 'completed')
+            ->latest('paid_at')
+            ->value('method');
+    }
+
+    /**
      * Recompute status from the payment ledger. Never touches draft/cancelled.
      */
     public function recalculateStatus(): void

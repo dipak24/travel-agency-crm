@@ -4,17 +4,16 @@ namespace App\Filament\Portal\Resources;
 
 use App\Filament\Portal\Resources\InvoiceResource\Pages;
 use App\Models\Invoice;
-use App\Models\Payment;
 use BackedEnum;
-use Filament\Infolists\Components\RepeatableEntry;
-use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Resources\Resource;
-use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class InvoiceResource extends Resource
 {
@@ -57,9 +56,21 @@ class InvoiceResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('invoice_no')->label('Invoice')->searchable()->sortable(),
-                TextColumn::make('booking.trip_name')->label('Booking'),
-                TextColumn::make('total')->label('Total')->money(fn (Invoice $record): string => $record->currency, divideBy: 100)->sortable(),
+                TextColumn::make('invoice_no')->label('Invoice number')->searchable()->sortable(),
+                TextColumn::make('purpose')
+                    ->label('Type')
+                    ->badge()
+                    ->color(fn (?string $state): string => $state === 'gift_voucher_purchase' ? 'warning' : 'gray')
+                    ->formatStateUsing(fn (?string $state): string => $state === 'gift_voucher_purchase' ? 'Gift voucher' : 'Standard'),
+                TextColumn::make('booking.trip_name')->label('Booking')->placeholder('—'),
+                TextColumn::make('created_at')->label('Date')->date()->sortable(),
+                TextColumn::make('total')->label('Amount')->money(fn (Invoice $record): string => $record->currency, divideBy: 100)->sortable(),
+                TextColumn::make('mode')
+                    ->label('Mode')
+                    ->state(fn (Invoice $record): ?string => $record->latestPaymentMethod())
+                    ->formatStateUsing(fn (?string $state): string => $state ? Str::headline($state) : '—')
+                    ->badge()
+                    ->color('gray'),
                 TextColumn::make('status')->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'paid' => 'success',
@@ -68,7 +79,23 @@ class InvoiceResource extends Resource
                         'cancelled' => 'gray',
                         default => 'info',
                     }),
-                TextColumn::make('due_date')->date()->sortable(),
+                TextColumn::make('due_date')->date()->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+            ])
+            ->filters([
+                SelectFilter::make('purpose')
+                    ->label('Type')
+                    ->options([
+                        'gift_voucher_purchase' => 'Gift voucher',
+                        'standard' => 'Standard',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return match ($data['value'] ?? null) {
+                            'gift_voucher_purchase' => $query->where('purpose', 'gift_voucher_purchase'),
+                            'standard' => $query->where(fn (Builder $q) => $q->whereNull('purpose')->orWhere('purpose', '!=', 'gift_voucher_purchase')),
+                            default => $query,
+                        };
+                    }),
             ])
             ->defaultSort('created_at', 'desc');
     }
@@ -76,49 +103,9 @@ class InvoiceResource extends Resource
     public static function infolist(Schema $schema): Schema
     {
         return $schema->components([
-            Section::make('Invoice')
-                ->schema([
-                    TextEntry::make('invoice_no')->label('Invoice number'),
-                    TextEntry::make('status')->badge(),
-                    TextEntry::make('due_date')->date(),
-                    TextEntry::make('amount')->label('Subtotal')->money(fn (Invoice $record): string => $record->currency, divideBy: 100),
-                    TextEntry::make('tax')->money(fn (Invoice $record): string => $record->currency, divideBy: 100),
-                    TextEntry::make('discount')->money(fn (Invoice $record): string => $record->currency, divideBy: 100),
-                    TextEntry::make('total')->money(fn (Invoice $record): string => $record->currency, divideBy: 100),
-                    TextEntry::make('balance')->label('Balance due')->state(fn (Invoice $record): int => $record->balanceDue())->money(fn (Invoice $record): string => $record->currency, divideBy: 100),
-                ])
-                ->columns(4),
-            Section::make('Items')
-                ->schema([
-                    RepeatableEntry::make('items')
-                        ->label('')
-                        ->schema([
-                            TextEntry::make('description'),
-                            TextEntry::make('qty')->label('Qty'),
-                            TextEntry::make('unit_price')->label('Unit price')
-                                ->money(fn (): string => auth('customer')->user()->tenant?->currency ?? 'USD', divideBy: 100),
-                            TextEntry::make('total')
-                                ->money(fn (): string => auth('customer')->user()->tenant?->currency ?? 'USD', divideBy: 100),
-                        ])
-                        ->columns(4)
-                        ->contained(false),
-                ])
-                ->visible(fn (Invoice $record): bool => $record->items->isNotEmpty()),
-            Section::make('Payments')
-                ->schema([
-                    RepeatableEntry::make('payments')
-                        ->label('')
-                        ->schema([
-                            TextEntry::make('amount')->money(fn (Payment $record): string => $record->currency, divideBy: 100),
-                            TextEntry::make('method')->badge(),
-                            TextEntry::make('type')->badge(),
-                            TextEntry::make('status')->badge(),
-                            TextEntry::make('paid_at')->label('Paid at')->dateTime(),
-                        ])
-                        ->columns(5)
-                        ->contained(false),
-                ])
-                ->visible(fn (Invoice $record): bool => $record->payments->isNotEmpty()),
+            ViewEntry::make('detail')
+                ->view('filament.invoices.detail')
+                ->columnSpanFull(),
         ]);
     }
 

@@ -11,7 +11,7 @@ class GiftVoucherPurchased extends Notification
 {
     use Queueable;
 
-    public function __construct(public GiftVoucher $voucher) {}
+    public function __construct(public GiftVoucher $voucher, public string $recipientName) {}
 
     /**
      * @return array<int, string>
@@ -27,7 +27,7 @@ class GiftVoucherPurchased extends Notification
 
         return (new MailMessage)
             ->subject('Your gift voucher is ready')
-            ->greeting("Hello {$notifiable->name},")
+            ->greeting("Hello {$this->recipientName},")
             ->line("Thanks for your purchase! Here is your gift voucher code, worth {$this->voucher->currency} {$amount}:")
             ->line("**{$this->voucher->code}**")
             ->line('Give this code to whoever will use it — it can be redeemed against any invoice with us.');

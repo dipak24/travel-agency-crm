@@ -17,6 +17,11 @@ class GiftVoucher extends Model
         'currency',
         'issued_to',
         'source_invoice_id',
+        'source_invoice_item_id',
+        'recipient_first_name',
+        'recipient_last_name',
+        'recipient_email',
+        'recipient_phone',
         'status',
         'expires_at',
     ];
@@ -42,5 +47,15 @@ class GiftVoucher extends Model
     public function sourceInvoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class, 'source_invoice_id');
+    }
+
+    public function sourceInvoiceItem(): BelongsTo
+    {
+        return $this->belongsTo(InvoiceItem::class, 'source_invoice_item_id');
+    }
+
+    public function recipientName(): ?string
+    {
+        return trim("{$this->recipient_first_name} {$this->recipient_last_name}") ?: null;
     }
 }

@@ -17,7 +17,11 @@ class CustomerFactory extends Factory
         return [
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
-            'phone' => fake()->phoneNumber(),
+            // e164PhoneNumber(), not phoneNumber() — the latter can produce extension suffixes
+            // like " x1234" that fail the tel-regex validation on `->tel()` phone form fields
+            // (e.g. BuyGiftVoucher's purchaser_phone) once every so often, an intermittent test
+            // failure that has nothing to do with whatever the test itself is actually checking.
+            'phone' => fake()->e164PhoneNumber(),
             'type' => 'individual',
         ];
     }

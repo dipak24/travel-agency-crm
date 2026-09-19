@@ -2,6 +2,7 @@
 
 namespace App\Filament\Portal\Resources\InvoiceResource\Pages;
 
+use App\Filament\Concerns\HasContainedTabs;
 use App\Filament\Portal\Resources\InvoiceResource;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Schemas\Components\Tabs\Tab;
@@ -9,6 +10,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class ListInvoices extends ListRecords
 {
+    use HasContainedTabs;
+
     protected static string $resource = InvoiceResource::class;
 
     public function getTabs(): array

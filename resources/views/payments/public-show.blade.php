@@ -96,11 +96,7 @@
                             class="gateway-button"
                             href="{{ \Illuminate\Support\Facades\URL::temporarySignedRoute('public.pay.start', now()->addMinutes(30), ['gateway' => $gateway->key(), 'invoice' => $invoice->id]) }}"
                         >
-                            Pay via {{ match ($gateway->key()) {
-                                'paypal' => 'PayPal',
-                                'hbl' => 'HBL',
-                                default => ucfirst($gateway->key()),
-                            } }}
+                            Pay via {{ $gateway->label() }}
                         </a>
                     @endforeach
                 </div>

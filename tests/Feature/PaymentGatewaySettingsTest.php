@@ -126,6 +126,40 @@ test('a disabled gateway does not require its credential fields to be filled', f
     expect(TenantPaymentGateway::query()->where('gateway', 'paypal')->firstOrFail()->enabled)->toBeFalse();
 });
 
+test('a tenant owner can enable pay later with no credentials required', function () {
+    $tenant = pgsTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $owner = pgsOwner($tenant);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(PaymentGateways::class)
+        ->set('payLaterData.enabled', true)
+        ->call('savePayLater')
+        ->assertHasNoFormErrors([], 'payLaterForm');
+
+    $payLater = TenantPaymentGateway::query()->where('gateway', 'pay_later')->firstOrFail();
+
+    expect($payLater->enabled)->toBeTrue()
+        ->and($payLater->credentials)->toBe([]);
+});
+
+test('pay later is reloaded correctly on the next visit and defaults to disabled', function () {
+    $tenant = pgsTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $owner = pgsOwner($tenant);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(PaymentGateways::class)
+        ->assertSet('payLaterData.enabled', false);
+
+    TenantPaymentGateway::query()->create(['tenant_id' => $tenant->id, 'gateway' => 'pay_later', 'enabled' => true]);
+
+    Livewire::actingAs($owner, 'tenant')->test(PaymentGateways::class)
+        ->assertSet('payLaterData.enabled', true);
+});
+
 test('a staff member without manage settings permission cannot access payment gateway settings', function () {
     $tenant = pgsTenant('Northwind Travel', 'northwind-travel');
     app(TenantContext::class)->set($tenant);
@@ -187,7 +221,10 @@ test('the send payment link action is hidden once an invoice is fully paid', fun
 
     Filament::setCurrentPanel('tenant');
 
+    // A paid invoice doesn't even appear under the default "Outstanding" tab — switch to "Paid"
+    // first so the row (and the action's own visible() check) can actually be exercised.
     Livewire::actingAs($owner, 'tenant')
         ->test(ListInvoices::class)
+        ->set('activeTab', 'paid')
         ->assertActionHidden(TestAction::make('sendPaymentLink')->table($invoice));
 });

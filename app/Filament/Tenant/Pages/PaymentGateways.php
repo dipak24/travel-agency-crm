@@ -3,6 +3,7 @@
 namespace App\Filament\Tenant\Pages;
 
 use App\Models\TenantPaymentGateway;
+use App\Services\PaymentGateways\PaymentGatewayResolver;
 use App\Support\TenantContext;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -38,10 +39,15 @@ class PaymentGateways extends Page
      */
     public ?array $hblData = [];
 
+    /**
+     * @var array<string, mixed>|null
+     */
+    public ?array $payLaterData = [];
+
     public function mount(): void
     {
         $existing = TenantPaymentGateway::query()
-            ->whereIn('gateway', ['paypal', 'hbl'])
+            ->whereIn('gateway', ['paypal', 'hbl', 'pay_later'])
             ->get()
             ->keyBy('gateway');
 
@@ -61,6 +67,10 @@ class PaymentGateways extends Page
             $existing->get('hbl')?->credentials ?? [],
             ['enabled' => (bool) $existing->get('hbl')?->enabled],
         ));
+
+        $this->payLaterForm->fill([
+            'enabled' => (bool) $existing->get('pay_later')?->enabled,
+        ]);
     }
 
     public static function canAccess(): bool
@@ -162,6 +172,27 @@ class PaymentGateways extends Page
             ->columns(1);
     }
 
+    public function payLaterForm(Schema $schema): Schema
+    {
+        return $schema
+            ->components([
+                Section::make('Pay Later')
+                    ->description('Let customers defer payment instead of paying online right away — the invoice is simply left unpaid, to be settled later through a real payment method or a payment your staff record manually.')
+                    ->footer([
+                        Actions::make([
+                            Action::make('savePayLater')
+                                ->label('Save Pay Later settings')
+                                ->submit('savePayLater'),
+                        ])->alignEnd(),
+                    ])
+                    ->schema([
+                        Toggle::make('enabled')->label('Enabled'),
+                    ]),
+            ])
+            ->statePath('payLaterData')
+            ->columns(1);
+    }
+
     public function savePaypal(): void
     {
         $this->saveGateway('paypal', $this->paypalForm);
@@ -170,6 +201,11 @@ class PaymentGateways extends Page
     public function saveHbl(): void
     {
         $this->saveGateway('hbl', $this->hblForm);
+    }
+
+    public function savePayLater(): void
+    {
+        $this->saveGateway('pay_later', $this->payLaterForm);
     }
 
     /**
@@ -190,7 +226,7 @@ class PaymentGateways extends Page
             ['enabled' => $enabled, 'credentials' => $values],
         );
 
-        Notification::make()->success()->title(strtoupper($gateway).' settings saved')->send();
+        Notification::make()->success()->title(app(PaymentGatewayResolver::class)->for($gateway)->label().' settings saved')->send();
     }
 
     public function content(Schema $schema): Schema
@@ -202,6 +238,9 @@ class PaymentGateways extends Page
             Form::make([EmbeddedSchema::make('hblForm')])
                 ->id('hblForm')
                 ->livewireSubmitHandler('saveHbl'),
+            Form::make([EmbeddedSchema::make('payLaterForm')])
+                ->id('payLaterForm')
+                ->livewireSubmitHandler('savePayLater'),
         ]);
     }
 }

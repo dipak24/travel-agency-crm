@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Payments\Concerns;
 
 use App\Models\Invoice;
 use App\Services\PaymentGateways\PaymentGatewayResolver;
+use Filament\Notifications\Notification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -42,15 +43,25 @@ trait HandlesGatewayCheckout
         return redirect()->away($url);
     }
 
+    /**
+     * Flashes both a plain session key (read directly by the public, non-Filament payment page —
+     * see resources/views/payments/public-show.blade.php) and a Filament notification (picked up
+     * automatically by the portal panel on its next render, since Notification::send() just pushes
+     * onto the session under its own key) — one call covers both destinations this trait serves.
+     */
     private function handleGatewayReturn(Request $request, Invoice $invoice, string $gateway, string $backTo): RedirectResponse
     {
         $result = app(PaymentGatewayResolver::class)->for($gateway)->handleReturn($request, $invoice);
 
-        return match ($result->status) {
-            'completed' => redirect()->to($backTo)->with('payment_success', 'Payment received — thank you!'),
-            'pending' => redirect()->to($backTo)->with('payment_pending', $result->message ?? "We're confirming your payment now."),
-            'cancelled' => redirect()->to($backTo)->with('payment_error', $result->message ?? 'Payment was cancelled.'),
-            default => redirect()->to($backTo)->with('payment_error', $result->message ?? 'Payment could not be completed.'),
+        [$sessionKey, $message, $status] = match ($result->status) {
+            'completed' => ['payment_success', 'Payment received — thank you!', 'success'],
+            'pending' => ['payment_pending', $result->message ?? "We're confirming your payment now.", 'info'],
+            'cancelled' => ['payment_error', $result->message ?? 'Payment was cancelled.', 'warning'],
+            default => ['payment_error', $result->message ?? 'Payment could not be completed.', 'danger'],
         };
+
+        Notification::make()->title($message)->status($status)->send();
+
+        return redirect()->to($backTo)->with($sessionKey, $message);
     }
 }

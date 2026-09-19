@@ -85,11 +85,7 @@ class ViewInvoice extends ViewRecord
 
         return collect($resolver->keys())
             ->map(fn (string $key): Action => Action::make('payVia'.ucfirst($key))
-                ->label('Pay via '.match ($key) {
-                    'paypal' => 'PayPal',
-                    'hbl' => 'HBL',
-                    default => ucfirst($key),
-                })
+                ->label('Pay via '.$resolver->for($key)->label())
                 ->icon('heroicon-o-credit-card')
                 ->color('success')
                 ->visible(fn (Invoice $record): bool => $record->balanceDue() > 0 && $resolver->for($key)->isEnabledFor($record))

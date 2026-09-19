@@ -14,6 +14,7 @@ class PaymentGatewayResolver
     private array $gateways = [
         'paypal' => PayPalGateway::class,
         'hbl' => HblGateway::class,
+        'pay_later' => PayLaterGateway::class,
     ];
 
     public function for(string $key): PaymentGateway

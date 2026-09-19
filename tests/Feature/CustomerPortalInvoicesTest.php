@@ -67,7 +67,7 @@ test('a customer can view their invoice items and payments', function () {
         ->get("/portal/invoices/{$invoice->id}")
         ->assertOk()
         ->assertSee('Package deposit')
-        ->assertSee('card');
+        ->assertSee('Card');
 });
 
 test('a customer can download their invoice as a PDF', function () {
@@ -82,6 +82,43 @@ test('a customer can download their invoice as a PDF', function () {
         ->test(ViewInvoice::class, ['record' => $invoice->getRouteKey()])
         ->callAction(TestAction::make('downloadPdf'))
         ->assertFileDownloaded("{$invoice->invoice_no}.pdf");
+});
+
+test('the invoice list shows the type and mode columns and can be filtered by type', function () {
+    $tenant = portalInvoicesTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $customer = Customer::factory()->create();
+    $standard = portalInvoiceFor($customer);
+    $giftVoucher = portalInvoiceFor($customer, ['purpose' => 'gift_voucher_purchase', 'booking_id' => null]);
+
+    Filament::setCurrentPanel('portal');
+
+    Livewire::actingAs($customer, 'customer')
+        ->test(ListInvoices::class)
+        ->assertCanSeeTableRecords([$standard, $giftVoucher])
+        ->filterTable('purpose', 'gift_voucher_purchase')
+        ->assertCanSeeTableRecords([$giftVoucher])
+        ->assertCanNotSeeTableRecords([$standard]);
+});
+
+test('the invoice view breaks the total down into an order summary with discount, tax, and any gift voucher applied', function () {
+    $tenant = portalInvoicesTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $customer = Customer::factory()->create();
+    $invoice = portalInvoiceFor($customer, ['amount' => 100000, 'tax' => 5000, 'discount' => 10000, 'total' => 95000]);
+    $invoice->payments()->create([
+        'amount' => 20000, 'currency' => 'USD', 'method' => 'gift_voucher', 'type' => 'installment',
+        'status' => 'completed', 'paid_at' => now(),
+    ]);
+
+    Filament::setCurrentPanel('portal');
+
+    Livewire::actingAs($customer, 'customer')
+        ->test(ViewInvoice::class, ['record' => $invoice->getRouteKey()])
+        ->assertSeeText('Order summary')
+        ->assertSeeText('$1,000.00') // subtotal
+        ->assertSeeText('$950.00') // total after the $100 discount
+        ->assertSeeText('$750.00'); // balance due after the $200 gift voucher credit
 });
 
 test('applying a valid percent promo code discounts the invoice total and is blocked from reuse on the same invoice', function () {

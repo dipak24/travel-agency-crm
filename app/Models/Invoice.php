@@ -31,6 +31,10 @@ class Invoice extends Model
         'purpose',
         'due_date',
         'issued_by',
+        'purchaser_first_name',
+        'purchaser_last_name',
+        'purchaser_email',
+        'purchaser_phone',
     ];
 
     protected static function booted(): void
@@ -82,6 +86,16 @@ class Invoice extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function giftVouchers(): HasMany
+    {
+        return $this->hasMany(GiftVoucher::class, 'source_invoice_id');
+    }
+
+    public function purchaserName(): ?string
+    {
+        return trim("{$this->purchaser_first_name} {$this->purchaser_last_name}") ?: null;
     }
 
     public function generateInvoiceNumber(): string

@@ -12,6 +12,13 @@ interface PaymentGateway
     public function key(): string;
 
     /**
+     * Human-readable name shown on every "Pay via X" button/option across the portal, the public
+     * payment link, and the gift voucher checkout — the single source of truth for that label, so
+     * adding a gateway never means hunting down a match($key) in three different views.
+     */
+    public function label(): string;
+
+    /**
      * Whether the given invoice's tenant has this gateway enabled and configured.
      */
     public function isEnabledFor(Invoice $invoice): bool;

@@ -49,6 +49,11 @@ class HblGateway implements PaymentGateway
         return 'hbl';
     }
 
+    public function label(): string
+    {
+        return 'HBL';
+    }
+
     public function isEnabledFor(Invoice $invoice): bool
     {
         $settings = $this->settingsFor($invoice);

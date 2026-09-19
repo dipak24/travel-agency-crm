@@ -9,6 +9,7 @@ use App\Models\Payment;
 use App\Models\Tenant;
 use App\Models\TenantPaymentGateway;
 use App\Models\TenantUser;
+use App\Services\PaymentGateways\PayLaterGateway;
 use App\Services\PaymentGateways\PayPalGateway;
 use App\Support\TenantContext;
 use Database\Seeders\PermissionSeeder;
@@ -209,6 +210,63 @@ test('a paypal webhook with an invalid signature is rejected and records nothing
 test('a webhook for an unknown invoice is rejected with a 404 rather than crashing', function () {
     $this->postJson('/webhooks/paypal/999999', ['event_type' => 'PAYMENT.CAPTURE.COMPLETED'])
         ->assertStatus(404);
+});
+
+test('pay later only appears once the tenant has turned it on, with no credentials required', function () {
+    $tenant = paymentGatewayTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $customer = Customer::factory()->create();
+    $invoice = paymentGatewayInvoice($customer, ['total' => 50000]);
+
+    Filament::setCurrentPanel('portal');
+
+    Livewire::actingAs($customer, 'customer')
+        ->test(ViewInvoice::class, ['record' => $invoice->getRouteKey()])
+        ->assertActionHidden('payViaPay_later');
+
+    TenantPaymentGateway::query()->create(['tenant_id' => $tenant->id, 'gateway' => 'pay_later', 'enabled' => true]);
+
+    Livewire::actingAs($customer, 'customer')
+        ->test(ViewInvoice::class, ['record' => $invoice->getRouteKey()])
+        ->assertActionVisible('payViaPay_later');
+});
+
+test('choosing pay later leaves the invoice unpaid and sends the customer back with a pending message', function () {
+    $tenant = paymentGatewayTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    TenantPaymentGateway::query()->create(['tenant_id' => $tenant->id, 'gateway' => 'pay_later', 'enabled' => true]);
+    $customer = Customer::factory()->create();
+    $invoice = paymentGatewayInvoice($customer, ['total' => 50000]);
+
+    $this->actingAs($customer, 'customer')
+        ->get("/portal/pay/pay_later/{$invoice->id}/start")
+        ->assertRedirect(route('payments.return', ['gateway' => 'pay_later', 'invoice' => $invoice->id]));
+
+    $this->get(route('payments.return', ['gateway' => 'pay_later', 'invoice' => $invoice->id]))
+        ->assertRedirect(route('filament.portal.resources.invoices.view', ['record' => $invoice->id]))
+        ->assertSessionHas('payment_pending');
+
+    expect($invoice->refresh()->status)->toBe('issued')
+        ->and(Payment::query()->withoutGlobalScopes()->where('invoice_id', $invoice->id)->exists())->toBeFalse();
+});
+
+test('starting pay later checkout is refused when the tenant has not enabled it', function () {
+    $tenant = paymentGatewayTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $customer = Customer::factory()->create();
+    $invoice = paymentGatewayInvoice($customer, ['total' => 50000]);
+
+    $this->actingAs($customer, 'customer')
+        ->get("/portal/pay/pay_later/{$invoice->id}/start")
+        ->assertRedirect(route('filament.portal.resources.invoices.view', ['record' => $invoice->id]))
+        ->assertSessionHas('payment_error');
+});
+
+test('pay later has nothing to refund', function () {
+    $payment = new Payment(['amount' => 5000, 'currency' => 'USD', 'method' => 'pay_later']);
+
+    expect(fn () => app(PayLaterGateway::class)->refund($payment))
+        ->toThrow(RuntimeException::class, 'Pay Later has no completed payments to refund.');
 });
 
 test('a webhook for an unknown gateway key is rejected with a 400 rather than crashing', function () {

@@ -3,6 +3,7 @@
 namespace App\Filament\Tenant\Resources\InvoiceResource\RelationManagers;
 
 use App\Filament\Forms\Components\MoneyInput;
+use App\Models\InvoiceItem;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -47,6 +48,12 @@ class ItemsRelationManager extends RelationManager
                 TextColumn::make('qty')->label('Qty')->numeric(),
                 TextColumn::make('unit_price')->label('Unit price')->money($currency, divideBy: 100),
                 TextColumn::make('total')->money($currency, divideBy: 100),
+                TextColumn::make('recipient_name')
+                    ->label('Gift recipient')
+                    ->state(fn (InvoiceItem $record): string => $record->recipientName() ?? '—')
+                    ->searchable(['recipient_first_name', 'recipient_last_name', 'recipient_email']),
+                TextColumn::make('recipient_email')->label('Recipient email')->placeholder('—'),
+                TextColumn::make('recipient_phone')->label('Recipient phone')->placeholder('—'),
             ])
             ->defaultSort('id')
             ->headerActions([CreateAction::make()])

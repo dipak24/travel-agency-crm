@@ -9,6 +9,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | tests/Feature/** | .ai/rules/feature.md |
 | database/migrations/**,app/Filament/Tenant/Resources/**,app/Filament/Resources/TenantResource* | .ai/rules/filament-resources.md |
 | app/Providers/Filament/** | .ai/rules/filament.md |
+| app/Services/PaymentGateways/**,app/Contracts/PaymentGateway.php | .ai/rules/contracts.md |
 | phpunit.xml,docker-compose.yml | .ai/rules/general.md |
 | app/Policies/**,database/seeders/**,app/Http/Middleware/** | .ai/rules/middleware.md |
 | database/migrations/** | .ai/rules/migrations.md |
