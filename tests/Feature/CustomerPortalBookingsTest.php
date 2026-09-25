@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Support\TenantContext;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -118,7 +119,7 @@ test('a customer can leave a note for staff, and staff can see it read-only on t
     // update the action's closure performs plus its read-only staff-side
     // display, rather than clicking through the modal itself.
     Livewire::actingAs($customer, 'customer')->test(ViewBooking::class, ['record' => $booking->getRouteKey()])
-        ->assertActionExists('editNote');
+        ->assertActionExists(TestAction::make('editNote')->schemaComponent('note'));
 
     $booking->update(['customer_notes' => 'Please book a window seat.']);
 

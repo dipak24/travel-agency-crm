@@ -10,6 +10,7 @@ use App\Notifications\BookingDocumentReviewed;
 use App\Notifications\BookingStatusChanged;
 use App\Services\BookingAddonRequest;
 use App\Support\TenantContext;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -41,7 +42,8 @@ test('a customer can see the upload/request actions and their existing documents
 
     Livewire::actingAs($customer, 'customer')
         ->test(ViewBooking::class, ['record' => $booking->getRouteKey()])
-        ->assertActionExists('uploadDocument')
+        ->assertActionExists(TestAction::make('upload_passport')->schemaComponent('documents.documents-passport'))
+        ->assertSee('Passport')
         ->assertSee('rejected')
         ->assertSee('Blurry scan');
 });
@@ -116,4 +118,52 @@ test('requesting an add-on for an inactive service is rejected', function () {
 
     expect(fn () => app(BookingAddonRequest::class)->request($booking, $service, 1, $customer->email))
         ->toThrow(LogicException::class, 'This add-on is no longer available.');
+});
+
+test('customer uploads are added per document type as pending, never replacing existing documents', function () {
+    $tenant = docsAddonsTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $customer = Customer::factory()->create();
+    $booking = Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Everest Base Camp']);
+    $approved = BookingDocument::query()->create([
+        'booking_id' => $booking->id, 'doc_type' => 'passport', 'file_path' => 'booking-documents/old-passport.pdf',
+        'status' => 'approved', 'uploaded_by' => 'staff',
+    ]);
+
+    $added = BookingDocument::addCustomerUploads($booking, [
+        'passport' => ['booking-documents/new-passport.pdf'],
+        'visa' => ['booking-documents/visa-1.pdf', 'booking-documents/visa-2.pdf'],
+        'insurance' => [],
+        'not_a_real_type' => ['booking-documents/evil.pdf'],
+    ], $customer->email);
+
+    expect($added)->toBe(3)
+        ->and($approved->fresh()->status)->toBe('approved')
+        ->and($booking->documents()->where('status', 'pending')->pluck('doc_type')->sort()->values()->all())->toBe(['passport', 'visa', 'visa'])
+        ->and($booking->documents()->where('file_path', 'booking-documents/evil.pdf')->exists())->toBeFalse()
+        ->and($booking->documents()->where('status', 'pending')->pluck('uploaded_by')->unique()->all())->toBe([$customer->email]);
+});
+
+test('each document type gets its own card with its own upload button and status summary', function () {
+    $tenant = docsAddonsTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $customer = Customer::factory()->create();
+    $booking = Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Everest Base Camp']);
+    Filament::setCurrentPanel('portal');
+
+    $page = Livewire::actingAs($customer, 'customer')->test(ViewBooking::class, ['record' => $booking->getRouteKey()])
+        ->assertSee('Travel documents')
+        ->assertSee('Nothing uploaded yet.');
+
+    foreach (BookingDocument::TYPES as $docType => $label) {
+        $page->assertSee($label)->assertActionVisible(TestAction::make("upload_{$docType}")->schemaComponent("documents.documents-{$docType}"));
+    }
+
+    BookingDocument::query()->create([
+        'booking_id' => $booking->id, 'doc_type' => 'pp_photo', 'file_path' => 'booking-documents/photo.jpg',
+        'status' => 'pending', 'uploaded_by' => $customer->email,
+    ]);
+
+    Livewire::actingAs($customer, 'customer')->test(ViewBooking::class, ['record' => $booking->getRouteKey()])
+        ->assertSee('1 pending review');
 });

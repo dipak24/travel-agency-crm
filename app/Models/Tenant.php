@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\PublicCatalogCache;
 use Database\Factories\TenantFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -17,11 +18,18 @@ class Tenant extends Model
     protected $fillable = [
         'name', 'slug', 'status', 'address', 'phone_number', 'mobile_number',
         'billing_email', 'timezone', 'currency', 'logo', 'primary_color', 'secondary_color', 'trial_ends_at',
+        'reminder_settings',
     ];
+
+    protected static function booted(): void
+    {
+        // Public API responses embed the tenant's currency, so a settings change must invalidate them.
+        static::saved(fn (Tenant $tenant) => app(PublicCatalogCache::class)->flush($tenant->id));
+    }
 
     protected function casts(): array
     {
-        return ['trial_ends_at' => 'datetime'];
+        return ['trial_ends_at' => 'datetime', 'reminder_settings' => 'array'];
     }
 
     public function users(): HasMany

@@ -53,13 +53,23 @@ class TenantMailer
         }
     }
 
-    private function configureMailerFor(?int $tenantId): bool
+    /**
+     * Registers the SMTP mailer the tenant (or, failing that, the platform) has enabled, WITHOUT
+     * switching the app's default mailer, and returns its name and from-address — or null when
+     * neither has SMTP enabled (the .env default applies). For a MailMessage that picks its own
+     * mailer via ->mailer()/->from(), such as a queued notification that vendor code sends with
+     * ->notify() and so can't be routed through send() (see PasswordResetRequested). Nothing global
+     * is left switched, so this is safe inside a reused queue worker.
+     *
+     * @return array{mailer: string, from_address: ?string, from_name: ?string}|null
+     */
+    public function registerMailerFor(?int $tenantId): ?array
     {
         $settings = $tenantId ? $this->tenantSettings($tenantId) : null;
         $settings ??= $this->platformSettings();
 
         if (! $settings) {
-            return false;
+            return null;
         }
 
         $mailerName = $settings instanceof TenantMailSetting
@@ -77,11 +87,25 @@ class TenantMailer
                 'password' => $credentials['password'] ?? null,
                 'encryption' => $credentials['encryption'] ?: null,
             ],
-            'mail.default' => $mailerName,
-            'mail.from' => [
-                'address' => $settings->from_address,
-                'name' => $settings->from_name,
-            ],
+        ]);
+
+        // The mail manager caches resolved mailers by name — drop it so edited credentials apply.
+        app('mail.manager')->purge($mailerName);
+
+        return ['mailer' => $mailerName, 'from_address' => $settings->from_address, 'from_name' => $settings->from_name];
+    }
+
+    private function configureMailerFor(?int $tenantId): bool
+    {
+        $mailer = $this->registerMailerFor($tenantId);
+
+        if ($mailer === null) {
+            return false;
+        }
+
+        config([
+            'mail.default' => $mailer['mailer'],
+            'mail.from' => ['address' => $mailer['from_address'], 'name' => $mailer['from_name']],
         ]);
 
         return true;

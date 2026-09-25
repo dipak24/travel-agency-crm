@@ -26,6 +26,7 @@ return new class extends Migration
             $table->string('primary_color', 7)->nullable();
             $table->string('secondary_color', 7)->nullable();
             $table->timestamp('trial_ends_at')->nullable();
+            $table->jsonb('reminder_settings')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });

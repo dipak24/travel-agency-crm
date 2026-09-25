@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Services\PublicCatalogCache;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Package extends Model
 {
     use BelongsToTenant;
+
+    protected static function booted(): void
+    {
+        $flushPublicCatalog = fn (Package $package) => app(PublicCatalogCache::class)->flush($package->tenant_id);
+
+        static::saved($flushPublicCatalog);
+        static::deleted($flushPublicCatalog);
+    }
 
     protected $fillable = [
         'tenant_id', 'name', 'slug', 'package_code', 'description', 'itinerary',

@@ -20,6 +20,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Spatie\Permission\Models\Permission;
+use UnitEnum;
 
 class MailSettings extends Page
 {
@@ -27,7 +28,9 @@ class MailSettings extends Page
 
     protected static ?string $navigationLabel = 'Email Settings';
 
-    protected static ?int $navigationSort = 102;
+    protected static UnitEnum|string|null $navigationGroup = 'Communication';
+
+    protected static ?int $navigationSort = 10;
 
     /**
      * @var array<string, mixed>|null
@@ -129,7 +132,7 @@ class MailSettings extends Page
             return;
         }
 
-        $sent = app(TenantMailer::class)->send($user->tenant_id, $user, new TestMailSettingNotification);
+        $sent = app(TenantMailer::class)->send($user->tenant_id, $user, new TestMailSettingNotification($user->tenant->name));
 
         if (! $sent) {
             Notification::make()->danger()->title('Test email failed to send')->body('Check your SMTP host, port, and credentials.')->send();

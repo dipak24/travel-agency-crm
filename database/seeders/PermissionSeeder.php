@@ -34,6 +34,7 @@ class PermissionSeeder extends Seeder
             'manage platform',
             'manage tenants',
             'manage billing',
+            'manage marketing',
             'view roles',
             'create roles',
             'update roles',
@@ -82,6 +83,7 @@ class PermissionSeeder extends Seeder
             'update catalog',
             'delete catalog',
             'manage settings',
+            'manage communications',
         ], 'tenant');
         $portalPermission = $this->permissions(['access portal'], 'customer');
 

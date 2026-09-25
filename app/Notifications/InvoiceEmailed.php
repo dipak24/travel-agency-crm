@@ -3,6 +3,8 @@
 namespace App\Notifications;
 
 use App\Models\Invoice;
+use App\Notifications\Concerns\RendersEmailTemplate;
+use App\Support\TransactionalEmailTypes;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -10,7 +12,7 @@ use Illuminate\Notifications\Notification;
 
 class InvoiceEmailed extends Notification
 {
-    use Queueable;
+    use Queueable, RendersEmailTemplate;
 
     public function __construct(public Invoice $invoice) {}
 
@@ -25,16 +27,15 @@ class InvoiceEmailed extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $this->invoice->loadMissing(['tenant', 'customer', 'booking']);
-        $amount = number_format($this->invoice->total / 100, 2);
 
-        return (new MailMessage)
-            ->subject("Invoice {$this->invoice->invoice_no}")
-            ->greeting("Hello {$notifiable->name},")
-            ->line("Please find attached invoice {$this->invoice->invoice_no} for {$this->invoice->currency} {$amount}.")
-            ->attachData(
-                Pdf::loadView('pdf.invoice', ['invoice' => $this->invoice])->output(),
-                "{$this->invoice->invoice_no}.pdf",
-                ['mime' => 'application/pdf'],
-            );
+        return $this->transactionalMail($this->invoice->tenant_id, TransactionalEmailTypes::INVOICE_EMAILED, [
+            'customer_name' => $notifiable->name,
+            'invoice_no' => $this->invoice->invoice_no,
+            'invoice_total' => $this->formatMoney($this->invoice->total, $this->invoice->currency),
+        ])->attachData(
+            Pdf::loadView('pdf.invoice', ['invoice' => $this->invoice])->output(),
+            "{$this->invoice->invoice_no}.pdf",
+            ['mime' => 'application/pdf'],
+        );
     }
 }

@@ -16,3 +16,6 @@ protected function getHeaderActions(): array
 ```
 
 `tests/Feature/TenantPanelPagesTest.php`'s "every tenant panel resource index page has a working create button" test guards against this regressing again — extend its `$resources` array when adding a new tenant resource.
+
+## Tabbed list pages must use HasContainedTabs
+Any ListRecords page that defines getTabs() must `use App\Filament\Concerns\HasContainedTabs;`. Without it, Filament renders the tabs as a centred floating pill bar instead of this app's left-aligned bar attached to the table (the portal's My Bookings page shipped without it). tests/Feature/ListPageTabsTest.php scans every List*.php page under app/Filament and fails when a tabbed page is missing the trait.

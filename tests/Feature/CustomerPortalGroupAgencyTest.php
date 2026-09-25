@@ -5,6 +5,7 @@ use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\Tenant;
 use App\Support\TenantContext;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -65,5 +66,5 @@ test('the bulk document-upload action is available to every customer, not just g
 
     Livewire::actingAs($individual, 'customer')
         ->test(ViewBooking::class, ['record' => $booking->getRouteKey()])
-        ->assertActionVisible('uploadDocument');
+        ->assertActionVisible(TestAction::make('upload_passport')->schemaComponent('documents.documents-passport'));
 });

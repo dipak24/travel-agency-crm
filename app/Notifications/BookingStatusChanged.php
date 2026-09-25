@@ -3,13 +3,15 @@
 namespace App\Notifications;
 
 use App\Models\Booking;
+use App\Notifications\Concerns\RendersEmailTemplate;
+use App\Support\TransactionalEmailTypes;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class BookingStatusChanged extends Notification
 {
-    use Queueable;
+    use Queueable, RendersEmailTemplate;
 
     public function __construct(public Booking $booking) {}
 
@@ -23,10 +25,10 @@ class BookingStatusChanged extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject("Your booking \"{$this->booking->trip_name}\" is now {$this->booking->status}")
-            ->greeting("Hello {$notifiable->name},")
-            ->line("The status of your booking \"{$this->booking->trip_name}\" has changed to: {$this->booking->status}.")
-            ->line('Log in to your travel portal to see the full booking details.');
+        return $this->transactionalMail($this->booking->tenant_id, TransactionalEmailTypes::BOOKING_STATUS_CHANGED, [
+            'customer_name' => $notifiable->name,
+            'trip_name' => $this->booking->trip_name,
+            'booking_status' => $this->booking->status,
+        ]);
     }
 }

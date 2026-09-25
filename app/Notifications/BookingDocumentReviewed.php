@@ -3,13 +3,15 @@
 namespace App\Notifications;
 
 use App\Models\BookingDocument;
+use App\Notifications\Concerns\RendersEmailTemplate;
+use App\Support\TransactionalEmailTypes;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class BookingDocumentReviewed extends Notification
 {
-    use Queueable;
+    use Queueable, RendersEmailTemplate;
 
     public function __construct(public BookingDocument $document) {}
 
@@ -23,22 +25,15 @@ class BookingDocumentReviewed extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $mail = (new MailMessage)
-            ->greeting("Hello {$notifiable->name},")
-            ->subject("Your {$this->document->doc_type} document was {$this->document->status}");
+        $typeKey = $this->document->status === 'rejected'
+            ? TransactionalEmailTypes::DOCUMENT_REJECTED
+            : TransactionalEmailTypes::DOCUMENT_APPROVED;
 
-        if ($this->document->status === 'rejected') {
-            $mail->line("Your uploaded {$this->document->doc_type} document was rejected.");
-
-            if (filled($this->document->rejection_reason)) {
-                $mail->line("Reason: {$this->document->rejection_reason}");
-            }
-
-            $mail->line('Please upload a corrected document from your travel portal.');
-        } else {
-            $mail->line("Your uploaded {$this->document->doc_type} document was approved.");
-        }
-
-        return $mail;
+        return $this->transactionalMail($this->document->tenant_id, $typeKey, [
+            'customer_name' => $notifiable->name,
+            'document_type' => $this->document->doc_type,
+            'trip_name' => $this->document->booking()->withoutGlobalScopes()->value('trip_name'),
+            'rejection_reason' => filled($this->document->rejection_reason) ? $this->document->rejection_reason : 'Not specified',
+        ]);
     }
 }

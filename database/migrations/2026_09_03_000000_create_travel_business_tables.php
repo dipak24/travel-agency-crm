@@ -296,6 +296,8 @@ return new class extends Migration
 
         Schema::create('platform_email_templates', function (Blueprint $table): void {
             $table->id();
+            // Set only for `category = system` rows: the App\Support\SystemEmailTypes key they override.
+            $table->string('key')->nullable()->unique();
             $table->string('category');
             $table->string('name');
             $table->string('subject');

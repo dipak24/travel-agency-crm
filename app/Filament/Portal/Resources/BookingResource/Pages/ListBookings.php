@@ -2,6 +2,7 @@
 
 namespace App\Filament\Portal\Resources\BookingResource\Pages;
 
+use App\Filament\Concerns\HasContainedTabs;
 use App\Filament\Portal\Resources\BookingResource;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Schemas\Components\Tabs\Tab;
@@ -9,6 +10,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class ListBookings extends ListRecords
 {
+    use HasContainedTabs;
+
     protected static string $resource = BookingResource::class;
 
     public function getTabs(): array

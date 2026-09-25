@@ -56,6 +56,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Public API Tenant Domain
+    |--------------------------------------------------------------------------
+    |
+    | The base domain tenant sites are served under (e.g. "example.com"), so
+    | the public API can resolve "acme.example.com" to the tenant with the
+    | slug "acme". When unset, tenants are resolved from `?tenant=slug` only.
+    |
+    */
+
+    'public_domain' => env('APP_PUBLIC_DOMAIN'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

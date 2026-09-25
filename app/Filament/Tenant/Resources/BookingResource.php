@@ -7,6 +7,7 @@ use App\Filament\Tenant\Resources\BookingResource\Pages;
 use App\Filament\Tenant\Resources\BookingResource\RelationManagers\PaymentsRelationManager;
 use App\Filament\Tenant\Resources\BookingResource\RelationManagers\TravelersRelationManager;
 use App\Models\Booking;
+use App\Models\BookingDocument;
 use App\Models\Customer;
 use App\Models\IncludeExclude;
 use App\Services\FixedDepartureCapacity;
@@ -46,13 +47,7 @@ class BookingResource extends Resource
      */
     public static function documentTypes(): array
     {
-        return [
-            'passport' => 'Passport',
-            'pp_photo' => 'PP size photo',
-            'visa' => 'Visa',
-            'insurance' => 'Insurance',
-            'other' => 'Other documents',
-        ];
+        return BookingDocument::TYPES;
     }
 
     public static function form(Schema $schema): Schema
@@ -124,7 +119,7 @@ class BookingResource extends Resource
                 ])
                 ->columnSpanFull(),
             Section::make('Upload travel documents')
-                ->description('One file (or several) per document type. Accepted: PDF, JPG, PNG. Min 10 KB, max 5 MB per file.')
+                ->description('One file (or several) per document type. '.BookingDocument::UPLOAD_RULES_HINT)
                 ->schema(collect(static::documentTypes())
                     ->map(fn (string $label, string $docType): FileUpload => FileUpload::make("document_files.{$docType}")
                         ->label($label)
@@ -132,9 +127,9 @@ class BookingResource extends Resource
                         ->directory('booking-documents')
                         ->visibility('private')
                         ->multiple()
-                        ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'])
-                        ->minSize(10)
-                        ->maxSize(5120)
+                        ->acceptedFileTypes(BookingDocument::ACCEPTED_MIME_TYPES)
+                        ->minSize(BookingDocument::MIN_SIZE_KB)
+                        ->maxSize(BookingDocument::MAX_SIZE_KB)
                         ->helperText('Max 5 MB, min 10 KB per file.')
                         ->afterStateHydrated(function (FileUpload $component, ?Model $record) use ($docType): void {
                             $component->state($record?->documents()->where('doc_type', $docType)->pluck('file_path')->all() ?? []);

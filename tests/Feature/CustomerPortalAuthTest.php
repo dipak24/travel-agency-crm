@@ -5,9 +5,9 @@ use App\Models\Customer;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Notifications\CustomerPortalInvite;
+use App\Notifications\PasswordResetRequested;
 use App\Support\TenantContext;
 use Filament\Actions\Testing\TestAction;
-use Filament\Auth\Notifications\ResetPassword as FilamentResetPasswordNotification;
 use Filament\Auth\Pages\PasswordReset\RequestPasswordReset;
 use Filament\Auth\Pages\PasswordReset\ResetPassword;
 use Filament\Facades\Filament;
@@ -117,5 +117,5 @@ test('a customer who already has a password can use the portal forgot-password p
         ->set('data.email', $customer->email)
         ->call('request');
 
-    Notification::assertSentTo($customer, FilamentResetPasswordNotification::class);
+    Notification::assertSentTo($customer, PasswordResetRequested::class);
 });

@@ -221,8 +221,58 @@ in as each phase starts.
    resolution (subdomain or `?tenant=slug`), published package/departure
    read-only API endpoints, public inquiry form → auto-creates a Lead,
    self-service waitlist entry on full fixed departures, IP rate limiting, Redis
-   caching. **Not started** as this phase's own scope — none of the above
-   exists. One narrow, unrelated slice of "public site" was pulled forward into
+   caching. **API completed (2026-09-25)** — the public website/landing-page
+   config (themes, custom domains + DNS TXT verification) is still not built,
+   per the "API only" scope above.
+   - Done: a versioned, unauthenticated JSON API in `routes/api.php` (`/api/v1`,
+     registered via `withRouting(api: ...)` — no Sanctum, nothing here needs
+     tokens). `App\Http\Middleware\ResolvePublicTenant` resolves the tenant from
+     a subdomain of the new `APP_PUBLIC_DOMAIN` (`config('app.public_domain')`,
+     e.g. `acme.trips.com` → slug `acme`), falling back to `?tenant=slug`;
+     unknown, suspended, or soft-deleted tenants get a JSON 404. It sets
+     `TenantContext` and clears it in `terminate()`, same as `ResolveTenant`.
+     Endpoints: `GET /packages` (paginated, `per_page` capped at 50),
+     `GET /packages/{slug}` (itinerary + upcoming departures),
+     `GET /departures` (optional `?package=slug`), `POST /inquiries`, and
+     `POST /departures/{id}/waitlist`. Only `published` + `is_public` packages
+     are exposed, and only their `open`/`full` departures starting today or
+     later. `base_price` and raw capacity (`total_slots`/`booked_slots`/
+     overbooking buffer) are never exposed. Prices are minor units plus the
+     tenant's currency. API Resources live in `App\Http\Resources\V1`.
+   - Done: **inquiry → Lead**. `App\Services\PublicInquiry` creates a `new`
+     Lead with `origin = public_website`, linked to a Customer matched by
+     email (case-insensitive) or newly created. An existing customer's
+     profile is never overwritten from a public request; the submitted
+     name/email/phone/message are kept in the lead's notes instead. A
+     submitted phone already used by another customer is left off the new
+     customer rather than hitting the per-tenant unique constraint.
+   - Done: **self-service waitlist**. New `BookingWaitlist` model (explicit
+     `$table = 'booking_waitlist'`, singular, like `BookingIncludeExclude`).
+     Joining is only allowed when the departure can't seat the requested pax.
+     The departure row is locked (`lockForUpdate()`) while the next `position`
+     is assigned. Each join also creates a `public_website` Lead, and
+     re-submitting with the same email returns the existing `waiting` entry
+     instead of queueing the same person twice. Public seat counts use a new
+     `FixedDeparture::publicSeatsRemaining()`, which excludes the overbooking
+     buffer (that buffer is staff headroom, not advertised capacity).
+     `remainingSlots()` is unchanged. The staff-side "manually notify
+     waitlist" flow is still Phase 11 scope.
+   - Done: **IP rate limiting**. Named limiters in `AppServiceProvider`:
+     `public-api` (60/min per IP) for reads and `public-api-submissions`
+     (5/min and 50/day per IP) for inquiries/waitlist. Throttling runs
+     *before* tenant resolution, so probing for tenant slugs is limited too.
+   - Done: **caching**. `App\Services\PublicCatalogCache` caches the read
+     endpoints for 5 minutes, keyed by tenant + full request URL. Invalidation
+     rotates a per-tenant version token from `saved`/`deleted` hooks on
+     `Package` and `FixedDeparture` (and `saved` on `Tenant`, since responses
+     embed its currency). That token approach works on any cache store, so it
+     needs no cache tags. It uses Redis once `CACHE_STORE=redis` is set in
+     production; dev stays on the `database` store because
+     `docker-compose.yml` has no Redis service yet.
+   - API errors now always render as JSON for `api/*` (`shouldRenderJsonWhen`
+     in `bootstrap/app.php`), even without an `Accept: application/json`
+     header. Covered by `tests/Feature/PublicApiTest.php` (14 tests).
+   - Original note, kept for history: one narrow, unrelated slice of "public site" was pulled forward into
    Phase 10 at the user's explicit request: a no-login public payment-link page
    (`GET /pay/{invoice}`, a signed URL, no tenant resolution by subdomain
    involved — the tenant is resolved from the invoice itself). That page doesn't
@@ -541,12 +591,163 @@ in as each phase starts.
     traveler info/balance due, tenant-configurable schedule), tenant
     marketing/transactional email templates, Super Admin platform email
     templates, mass-email campaigns, `saas_leads` (platform's own top-of-
-    funnel), waitlist manual-notify flow, unsubscribe compliance. **Mostly not
-    started** — every model here (`EmailTemplate`, `EmailCampaign`, `Reminder`,
-    `SaasLead`, etc.) is still missing, only the tables exist. Reminders
-    depend on Phase 7 data; the email-template/campaign piece only depends on
-    Phase 0/3/5 (tenants + customers) and could be pulled earlier if a second
-    dev track has spare capacity.
+    funnel), waitlist manual-notify flow, unsubscribe compliance.
+    **Completed (2026-09-25).** Deployment note: nothing runs the scheduler
+    yet. `docker-compose.yml` has a `queue` worker but no `schedule:work`
+    service or cron, so reminders and scheduled campaigns won't fire outside
+    tests until one is added.
+    - Done: **permissions**. New tenant permission `manage communications`
+      (templates, campaigns, reminder schedule; Tenant Owner gets it through
+      the existing "sync every tenant permission" onboarding step) and new
+      platform permission `manage marketing` (platform templates, platform
+      campaigns, SaaS leads). Both follow the existing policy fallback: if the
+      permission row doesn't exist yet, the policy checks for the Tenant
+      Owner / Super Admin role instead.
+    - Done: **email templates**. The code-owned catalog in
+      `App\Support\TransactionalEmailTypes` (11 types) is synced into
+      `email_template_types`. Every tenant gets its own editable
+      `transactional` copy of each type: seeded by `TenantOnboarding`, by
+      `DatabaseSeeder`, and on opening the template list, which covers tenants
+      created before a type existed. `App\Services\Mail\EmailTemplates`
+      renders `{{ tag }}` merge tags. Values are always HTML-escaped (they carry
+      customer-supplied text), and a tag the rich text editor URL-encoded inside
+      a link `href` is still substituted. A tenant's `active` template is used;
+      a `draft` falls back to the default wording. **All six existing
+      notifications now render through their tenant's template** via
+      `App\Notifications\Concerns\RendersEmailTemplate`, inside a new
+      tenant-branded layout (`resources/views/emails/templated.blade.php`),
+      instead of hard-coded `MailMessage` lines — so editing a template changes
+      the real email. Document review is split into two types
+      (approved/rejected). Tenant UI: `EmailTemplateResource`
+      (Communication nav group), with Transactional/Marketing tabs,
+      "Reset to default wording", and a merge-tag hint. Transactional
+      templates can't be created or deleted; anything created in the panel is
+      a marketing template.
+    - Done: **reminder jobs** (`App\Services\BookingReminders`,
+      `app:send-booking-reminders`, daily 08:00). Types: documents (no uploads,
+      or every upload of some document type rejected), traveler info (fewer
+      travelers than `pax_count`, or a missing DOB/passport number), and
+      balance due (an open invoice with a balance). This also covers the
+      portal's "payment reminder". Each tenant's schedule is "days before the
+      trip starts", stored in a new `tenants.reminder_settings` jsonb column
+      (added to the original migration) and edited on the new
+      `ReminderSettings` page. **Off by default**, so shipping this never
+      starts emailing an existing tenant's customers unannounced. Each run
+      sends at most one reminder per booking and type: the closest rule the
+      booking has reached. `reminders` rows are both the log and the
+      de-duplication record, so a missed day catches up with one email, not
+      a burst. A failed send is logged as `failed` and retried on the next run.
+    - Done: **mass-email campaigns**, for tenants (audience: own customers,
+      optionally filtered by customer type, or own active staff) and for the
+      platform (audience: active tenants via billing email, falling back to
+      the tenant's first user; or SaaS leads, optionally filtered by status).
+      Both run through one `App\Services\Mail\CampaignSender`
+      (draft → scheduled → queued → sending → sent). Sending runs in the queued
+      `App\Jobs\SendEmailCampaign`, 100 recipients per job, re-dispatching
+      itself so a large audience never has to fit in one worker timeout.
+      Per-recipient status means a retried job never double-sends.
+      Recipients are de-duplicated by email. Scheduled campaigns go out via
+      `app:send-scheduled-campaigns` (every minute). One
+      `EmailCampaignPolicy` covers both owners, since `Gate::policy()` is one
+      class per model (same pattern as `BookingPolicy`): tenant staff only see
+      their own tenant's campaigns, Super Admins only platform ones, and
+      nothing is editable after sending. UI: tenant `EmailCampaignResource`
+      and admin `PlatformCampaignResource` (shared columns/actions in
+      `App\Filament\Concerns\ConfiguresEmailCampaigns`: Send now, Schedule,
+      Cancel schedule).
+    - Done: **unsubscribe compliance**. Every campaign email carries a signed
+      unsubscribe link (footer) plus RFC 8058 `List-Unsubscribe` /
+      `List-Unsubscribe-Post: One-Click` headers. `GET /unsubscribe` only
+      shows a confirmation button, because mail scanners prefetch links;
+      the POST records an `email_unsubscribes` row (scoped to that tenant, or
+      `tenant_id = null` for platform campaigns) and also accepts one-click
+      POSTs from mail providers (CSRF-exempt; the URL signature is the
+      authorization). Unsubscribed addresses are left out when recipients are
+      built. Transactional emails are unaffected, as intended.
+    - Done: **editable system emails (admin panel)**. Filament's hard-coded
+      "Forgot password" email on all three panels is replaced (container
+      binding) by `App\Notifications\PasswordResetRequested`. The Super Admin
+      and tenant-staff versions are platform system templates
+      (`App\Support\SystemEmailTypes`, stored as `platform_email_templates`
+      rows with `category = system` and a new unique `key` column), edited
+      under admin **Communication → Email Templates → System emails**
+      (`manage platform`, edit/reset only). The customer portal version is
+      tenant-branded: a new `customer_password_reset` type in each tenant's
+      Email Templates. **Also fixes delivery**: reset emails previously went
+      out through the `.env` mailer, ignoring platform/tenant SMTP settings.
+      They now pick the tenant's SMTP, then the platform's, then `.env`, via
+      `TenantMailer::registerMailerFor()`. System templates are excluded from
+      the marketing template list, the campaign picker, and campaign sending.
+      Covered by `tests/Feature/SystemEmailsTest.php`.
+    - **Template status rules (decided 2026-09-25, at user request)**:
+      transactional and system emails are always on, and only their
+      subject/body can be edited. Their Draft status was removed because it
+      never stopped an email, it only quietly reverted to the default wording.
+      Active/Draft/Archived now exists only on marketing templates. Enforced
+      at the model level (`App\Models\Concerns\GuardsEmailTemplateUsage`), not
+      just in the UI:
+      - a marketing template used by a scheduled/queued/sending campaign is
+        locked (no edits, status changes or delete), since a running campaign
+        re-reads it for every batch
+      - a template referenced by any campaign can't be deleted, only archived
+      - Send now / Schedule reject a campaign whose template isn't active,
+        instead of failing later
+      - transactional/system rows can't be forged or re-categorised
+      - edit pages whitelist the fields they save.
+    - **Naming and navigation (2026-09-25, at user request)**. The admin
+      panel's former "Platform Email Templates" were the platform's
+      **campaign (marketing) templates**, not transactional emails. They and
+      the system emails are now two tabs, **Campaign templates** and
+      **System emails**, of one admin **Communication → Email Templates**
+      screen (`PlatformEmailTemplateResource`, slug `email-templates`). Each
+      tab only shows for an admin with its permission (`manage marketing` /
+      `manage platform`), and the rows are filtered by permission, not just by
+      tab. The tenant screen's tabs are renamed **Transactional emails** and
+      **Campaign templates**. Both panels' **Email Settings** pages moved into
+      Communication; admin **SaaS Leads** moved to Platform. The last
+      hard-coded email, the Email Settings "Send test email", is now the
+      editable system email `mail_settings_test`, so every email the app
+      sends has an editable template. **Business-logic fix**: a suspended or
+      deleted tenant's scheduled or in-progress campaign is now marked
+      `failed` instead of sending (reminders already skipped suspended
+      tenants).
+    - **Seeding**: `Database\Seeders\EmailTemplateSeeder` (called from
+      `DatabaseSeeder`, or on its own with
+      `php artisan db:seed --class=EmailTemplateSeeder`) creates every fixed
+      template: the type catalog, all system emails, and every tenant's
+      transactional templates. It is idempotent and never overwrites edited
+      wording. Default wording lives in code (`TransactionalEmailTypes` /
+      `SystemEmailTypes`), so a database reset never loses it; only
+      panel-made edits are lost.
+    - Done: **`saas_leads`**. `SaasLead` model + admin `SaasLeadResource`
+      (Marketing nav group; unique email; status pipeline new → contacted →
+      demo scheduled → converted/lost).
+    - Done: **waitlist manual-notify**. Tenant `BookingWaitlistResource`
+      (CRM group, list only, since entries come from the Phase 8 public API)
+      with "Notify: seats available" (`App\Services\WaitlistNotifier` sends the
+      templated `WaitlistSeatAvailable`, then sets `notified`/`notified_at`/
+      `notified_by_staff_id`, leaving the entry `waiting` if delivery failed),
+      "Mark as booked", and "Remove". Gated by `view bookings` /
+      `update bookings`.
+    - **Fixed a real test-infrastructure bug found while testing this**:
+      `docker-compose.yml` loads the whole `.env` into the container as real
+      environment variables (`env_file: .env`). `tests/bootstrap.php` only
+      unset the `DB_*` keys from `$_SERVER`, so every *other* `phpunit.xml`
+      override was being silently ignored inside the container. Tests were
+      actually running with `MAIL_MAILER=log` (no inspectable mail),
+      `QUEUE_CONNECTION=database` (queued jobs were written to the sqlite
+      `jobs` table and never ran), database-backed cache/session, and
+      `APP_ENV=local`. `tests/bootstrap.php` now unsets every key
+      `phpunit.xml` sets (read from the file itself), not a hand-kept list.
+      The full suite also outgrew PHP's default 128 MB (Filament table views
+      are heavy), so `phpunit.xml` now sets `memory_limit=512M`. Verified: the
+      full suite (317 tests) passes, and dev Postgres row counts were
+      unchanged before and after.
+    - Covered by `tests/Feature/EmailTemplatesTest.php`,
+      `BookingRemindersTest.php`, `EmailCampaignsTest.php`,
+      `EmailUnsubscribeTest.php`, `WaitlistNotifyTest.php`, and
+      `PlatformMarketingTest.php`; `TenantPanelPagesTest` now also covers the
+      two new tenant resources.
     - **Done, pulled forward (2026-09-12)**: the outgoing-mail infrastructure
       every future piece of this phase (and every existing notification —
       invoices, portal invites, booking/document status changes, gift-voucher
@@ -634,6 +835,47 @@ Phase 0 → 1 → 2 → 3 → (4, 5, 6 — can interleave) → 7 → 9 → 10 �
 Phase 8 (public site/API) and the email-template half of Phase 11 are **not** on
 this critical path — they only depend on Phases 5/6, so they can be built
 alongside 7 rather than after it.
+
+---
+
+## TODO: Pending
+
+Open items to pick up later. The Phase 11 email features are all built and
+tested; these are the deployment/environment steps they still need before
+email fully works outside the test suite (checked 2026-09-25).
+
+**Email — required before email works in a running environment**
+
+- [ ] **Rebuild the containers** (`docker compose up -d --build`). The `queue`
+      container still runs the old image — it has no `app/Jobs` folder and none
+      of the new notification classes — so anything processed by the queue
+      fails there: campaign sending (`App\Jobs\SendEmailCampaign`) and every
+      "Forgot password" email (`PasswordResetRequested` is queued). The source
+      code isn't bind-mounted into the containers (see `.ai/rules/general.md`),
+      so a rebuild is needed after every code change for the queue worker.
+- [ ] **Add a scheduler service.** `docker-compose.yml` has `app` and `queue`
+      but nothing runs `php artisan schedule:work` (or a cron calling
+      `schedule:run`), so no scheduled command ever fires:
+      `app:send-booking-reminders` (daily 08:00), `app:send-scheduled-campaigns`
+      (every minute), and the existing `app:expire-gift-vouchers` (daily).
+      Suggested: a `scheduler` service built from the same `Dockerfile` as
+      `queue`, with `command: php artisan schedule:work`. Also needed in
+      production (cron or a supervisor process).
+- [ ] **Configure real mail delivery.** `.env` has `MAIL_MAILER=log`, and no
+      platform or tenant SMTP settings are enabled, so every email (password
+      resets, invoices, reminders, campaigns) is currently written to
+      `storage/logs/laravel.log` instead of being delivered. Enable SMTP in
+      admin **Communication → Email Settings** (platform-wide default) and/or
+      per tenant in the tenant panel's **Communication → Email Settings**, then
+      use **Send test email** to confirm. Alternatively set real `MAIL_*`
+      values in `.env` as the last-resort fallback.
+
+**Email — optional**
+
+- [ ] Automatically send the customer portal invite when a booking is created.
+      Deliberately not built: staff currently send it manually with
+      **Invite to portal** on the Customers list. Decide whether every new
+      booking should auto-invite its customer before building it.
 
 ---
 
@@ -734,12 +976,16 @@ page; the roadmap's own two line items are both just more widgets on it
       `activeSubscription()`/`tenantInvoices()`) back both of these widgets.
       Covered by `tests/Feature/AdminDashboardWidgetsTest.php`.
 
-**Email Template Builder (platform templates)**
+**Email Template Builder (platform templates)** — built (Phase 11), under a
+new "Marketing" nav group gated by `manage marketing`
 
-- [ ] Create `platform_email_template`
-- [ ] List / edit / archive
-- [ ] Create campaign (audience: tenants or saas_leads)
-- [ ] Send / schedule campaign
+- [x] Create `platform_email_template` — `PlatformEmailTemplateResource`
+- [x] List / edit / archive — archive is the `archived` status; archived and
+      draft templates can't be picked for a campaign
+- [x] Create campaign (audience: tenants or saas_leads) —
+      `PlatformCampaignResource`
+- [x] Send / schedule campaign — Send now / Schedule / Cancel schedule actions
+- [x] SaaS leads — `SaasLeadResource`
 
 **System Settings**
 
@@ -950,19 +1196,23 @@ standalone module
 - [ ] DNS TXT record verification before activation
 - [ ] Contact settings / branding
 
-**Email Template Builder & Mass Emailing (tenant)** — templates/campaigns not
-started; the tenant's own outgoing SMTP configuration this will send through
-is done
+**Email Template Builder & Mass Emailing (tenant)** — built (Phase 11), under a
+new "Communication" nav group gated by `manage communications`
 
 - [x] Per-tenant outgoing SMTP configuration, separate from the platform's —
       `App\Filament\Tenant\Pages\MailSettings` (`tenant_mail_settings`, gated
       by `manage settings`); see the Phase 11 note above
-- [ ] Auto-seed transactional templates per tenant on onboarding
-- [ ] Edit transactional template subject/body
-- [ ] Create / list / edit / delete marketing templates
-- [ ] Create / send / schedule campaign (audience: own customers or own staff
-      only)
-- [ ] Unsubscribe handling
+- [x] Auto-seed transactional templates per tenant on onboarding —
+      `EmailTemplates::seedTenantTemplates()` from `TenantOnboarding`
+- [x] Edit transactional template subject/body — `EmailTemplateResource`,
+      used by every outgoing notification, with "Reset to default wording"
+- [x] Create / list / edit / delete marketing templates
+- [x] Create / send / schedule campaign (audience: own customers or own staff
+      only) — `EmailCampaignResource`
+- [x] Unsubscribe handling — signed link + one-click headers,
+      `email_unsubscribes`
+- [x] Automated reminder schedule — `ReminderSettings` page
+- [x] Waitlist manual notify — `BookingWaitlistResource`
 
 **Reports** — built as a new tenant-panel page, `App\Filament\Tenant\Pages\Reports`
 (`/tenant/reports`), assembling widgets deliberately kept OUT of
@@ -1037,9 +1287,23 @@ no create/edit/delete)
 **Document Upload** — built via a header action on the portal booking detail
 page
 
-- [x] Upload passport / visa / photo — `FileUpload::multiple()`, one action
-      covers uploading several documents at once
-- [x] View approval status — status badge + rejection reason, read-only
+- [x] Upload passport / visa / photo — redesigned 2026-09-25 to match the
+      tenant booking form. The "Travel documents" section is a two-column grid
+      with **one card per document type** (Passport, PP size photo, Visa,
+      Insurance, Other). Each card has its own **Upload** button (several
+      files at once), a status summary (e.g. "1 pending review · 1 rejected"),
+      and that type's files with status and rejection reason. It
+      uses the same PDF/JPG/PNG and 10 KB–5 MB rules as the tenant side
+      (shared constants on `BookingDocument`; the portal upload previously had
+      no size limit at all). Customer uploads are add-only
+      (`BookingDocument::addCustomerUploads()`): they never remove or replace
+      a document staff are reviewing or have approved, and unknown document
+      types are ignored. Every portal booking card is now full width, and the
+      note to staff moved from the page header into its own "Your note to
+      staff" card.
+- [x] View approval status — status badge + rejection reason, read-only,
+      with readable type names (e.g. "PP size photo", not `pp_photo`), upload
+      time, and an empty state when nothing has been uploaded yet
 
 **Add-on Services** — built via a header action +
 `App\Services\
@@ -1088,9 +1352,9 @@ BookingAddonRequest`
       `App\Notifications\
       BookingDocumentReviewed`, mailed on
       `BookingDocument`'s `updated` event
-- [ ] Payment reminder — deliberately deferred: this needs the `reminders`
-      table + a scheduling job, which is Phase 11 ("Communication & Automation")
-      scope and hasn't been started yet
+- [x] Payment reminder — the Phase 11 "balance due" reminder
+      (`App\Services\BookingReminders`), on the tenant's own schedule, once
+      the tenant enables it
 
 #ISSUES: 1 Tenant Portal — **Resolved**
 

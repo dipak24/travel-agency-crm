@@ -2,13 +2,15 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Concerns\RendersEmailTemplate;
+use App\Support\TransactionalEmailTypes;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class CustomerPortalInvite extends Notification
 {
-    use Queueable;
+    use Queueable, RendersEmailTemplate;
 
     public function __construct(public string $url) {}
 
@@ -22,11 +24,9 @@ class CustomerPortalInvite extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject('You\'re invited to your travel portal')
-            ->greeting("Hello {$notifiable->name},")
-            ->line('You can now set up your travel portal account to view your bookings, upload documents, and track your invoices.')
-            ->action('Set your password', $this->url)
-            ->line('This link will expire in 60 minutes. If you weren\'t expecting this invitation, you can ignore this email.');
+        return $this->transactionalMail($notifiable->tenant_id, TransactionalEmailTypes::PORTAL_INVITE, [
+            'customer_name' => $notifiable->name,
+            'action_url' => $this->url,
+        ]);
     }
 }

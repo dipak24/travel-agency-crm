@@ -3,13 +3,15 @@
 namespace App\Notifications;
 
 use App\Models\GiftVoucher;
+use App\Notifications\Concerns\RendersEmailTemplate;
+use App\Support\TransactionalEmailTypes;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class GiftVoucherPurchased extends Notification
 {
-    use Queueable;
+    use Queueable, RendersEmailTemplate;
 
     public function __construct(public GiftVoucher $voucher, public string $recipientName) {}
 
@@ -23,13 +25,10 @@ class GiftVoucherPurchased extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $amount = number_format($this->voucher->value / 100, 2);
-
-        return (new MailMessage)
-            ->subject('Your gift voucher is ready')
-            ->greeting("Hello {$this->recipientName},")
-            ->line("Thanks for your purchase! Here is your gift voucher code, worth {$this->voucher->currency} {$amount}:")
-            ->line("**{$this->voucher->code}**")
-            ->line('Give this code to whoever will use it — it can be redeemed against any invoice with us.');
+        return $this->transactionalMail($this->voucher->tenant_id, TransactionalEmailTypes::GIFT_VOUCHER_PURCHASED, [
+            'recipient_name' => $this->recipientName,
+            'voucher_code' => $this->voucher->code,
+            'voucher_value' => $this->formatMoney($this->voucher->value, $this->voucher->currency),
+        ]);
     }
 }

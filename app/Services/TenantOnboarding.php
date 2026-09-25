@@ -6,6 +6,7 @@ use App\Models\SubscriptionPlan;
 use App\Models\Tenant;
 use App\Models\TenantSubscription;
 use App\Models\TenantUser;
+use App\Services\Mail\EmailTemplates;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
@@ -45,6 +46,8 @@ class TenantOnboarding
                     'status' => 'trialing',
                     'starts_at' => now(),
                 ]);
+
+                app(EmailTemplates::class)->seedTenantTemplates($tenant);
 
                 return $tenant;
             } finally {

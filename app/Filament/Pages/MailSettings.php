@@ -20,6 +20,7 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
+use UnitEnum;
 
 class MailSettings extends Page
 {
@@ -27,7 +28,9 @@ class MailSettings extends Page
 
     protected static ?string $navigationLabel = 'Email Settings';
 
-    protected static ?int $navigationSort = 100;
+    protected static UnitEnum|string|null $navigationGroup = 'Communication';
+
+    protected static ?int $navigationSort = 10;
 
     /**
      * @var array<string, mixed>|null

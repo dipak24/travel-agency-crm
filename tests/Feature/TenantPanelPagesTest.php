@@ -25,7 +25,7 @@ test('tenant owner can access every tenant panel resource index and create page'
         'bookings', 'booking-travelers', 'customers', 'fixed-departures',
         'group-discount-tiers', 'include-excludes', 'invoices',
         'leads', 'packages', 'payments', 'promo-codes', 'roles',
-        'services', 'staff',
+        'services', 'staff', 'email-templates', 'email-campaigns',
     ];
 
     foreach ($resources as $resource) {
@@ -56,7 +56,7 @@ test('every tenant panel resource index page has a working create button', funct
         'bookings', 'booking-travelers', 'customers', 'fixed-departures',
         'group-discount-tiers', 'include-excludes', 'invoices',
         'leads', 'packages', 'payments', 'promo-codes', 'roles',
-        'services', 'staff',
+        'services', 'staff', 'email-templates', 'email-campaigns',
     ];
 
     foreach ($resources as $resource) {

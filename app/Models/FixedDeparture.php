@@ -3,8 +3,10 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Services\PublicCatalogCache;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use LogicException;
 
 class FixedDeparture extends Model
@@ -18,6 +20,11 @@ class FixedDeparture extends Model
                 throw new LogicException('The package must belong to the current tenant.');
             }
         });
+
+        $flushPublicCatalog = fn (FixedDeparture $departure) => app(PublicCatalogCache::class)->flush($departure->tenant_id);
+
+        static::saved($flushPublicCatalog);
+        static::deleted($flushPublicCatalog);
     }
 
     protected $fillable = [
@@ -47,8 +54,22 @@ class FixedDeparture extends Model
         return $this->belongsTo(Package::class);
     }
 
+    public function waitlistEntries(): HasMany
+    {
+        return $this->hasMany(BookingWaitlist::class);
+    }
+
     public function remainingSlots(): int
     {
         return max(0, $this->total_slots + $this->overbooking_buffer - $this->booked_slots);
+    }
+
+    /**
+     * Seats offered on the public website. Unlike remainingSlots(), this excludes the overbooking
+     * buffer, which is headroom for staff discretion rather than advertised capacity.
+     */
+    public function publicSeatsRemaining(): int
+    {
+        return $this->status === 'full' ? 0 : max(0, $this->total_slots - $this->booked_slots);
     }
 }

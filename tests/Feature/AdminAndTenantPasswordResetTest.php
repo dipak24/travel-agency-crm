@@ -3,8 +3,8 @@
 use App\Models\SuperAdmin;
 use App\Models\Tenant;
 use App\Models\TenantUser;
+use App\Notifications\PasswordResetRequested;
 use App\Support\TenantContext;
-use Filament\Auth\Notifications\ResetPassword as FilamentResetPasswordNotification;
 use Filament\Auth\Pages\PasswordReset\RequestPasswordReset;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,7 +23,7 @@ test('a super admin can use the admin panel forgot-password page', function () {
         ->set('data.email', $admin->email)
         ->call('request');
 
-    Notification::assertSentTo($admin, FilamentResetPasswordNotification::class);
+    Notification::assertSentTo($admin, PasswordResetRequested::class);
 });
 
 test('a tenant staff member can use the tenant panel forgot-password page', function () {
@@ -38,5 +38,5 @@ test('a tenant staff member can use the tenant panel forgot-password page', func
         ->set('data.email', $staff->email)
         ->call('request');
 
-    Notification::assertSentTo($staff, FilamentResetPasswordNotification::class);
+    Notification::assertSentTo($staff, PasswordResetRequested::class);
 });
