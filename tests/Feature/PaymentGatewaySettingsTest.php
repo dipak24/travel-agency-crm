@@ -167,7 +167,7 @@ test('a staff member without manage settings permission cannot access payment ga
     $role = Role::create(['name' => 'Sales Agent', 'guard_name' => 'tenant', 'team_id' => $tenant->id]);
     $staff->assignRole($role);
 
-    $this->actingAs($staff, 'tenant');
+    $this->actingAsStaff($staff);
 
     expect(PaymentGateways::canAccess())->toBeFalse();
 });

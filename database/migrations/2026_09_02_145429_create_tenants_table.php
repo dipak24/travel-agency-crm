@@ -23,6 +23,7 @@ return new class extends Migration
             $table->string('timezone')->default('UTC');
             $table->string('currency', 3)->default('USD');
             $table->string('logo')->nullable();
+            $table->string('favicon')->nullable();
             $table->string('primary_color', 7)->nullable();
             $table->string('secondary_color', 7)->nullable();
             $table->timestamp('trial_ends_at')->nullable();

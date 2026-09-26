@@ -96,13 +96,13 @@ test('staff without booking access cannot open the waitlist', function () {
     $tenant = Tenant::query()->where('slug', 'demo-travel')->firstOrFail();
     $accountant = waitlistStaff($tenant, 'Accountant');
 
-    $this->actingAs($accountant, 'tenant')->get('/tenant/booking-waitlists')->assertForbidden();
+    $this->actingAsStaff($accountant)->get('/tenant/booking-waitlists')->assertForbidden();
 });
 
 test('the waitlist and reminder settings pages render for a tenant owner', function () {
     $this->seed();
     $owner = TenantUser::query()->withoutGlobalScopes()->where('email', 'staff@example.com')->firstOrFail();
 
-    $this->actingAs($owner, 'tenant')->get('/tenant/booking-waitlists')->assertOk();
-    $this->actingAs($owner, 'tenant')->get('/tenant/reminder-settings')->assertOk()->assertSee('Days before the trip starts');
+    $this->actingAsStaff($owner)->get('/tenant/booking-waitlists')->assertOk();
+    $this->actingAsStaff($owner)->get('/tenant/reminder-settings')->assertOk()->assertSee('Days before the trip starts');
 });

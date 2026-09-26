@@ -20,6 +20,10 @@ class InvoiceGiftVoucherRedemption
      */
     public function redeem(Invoice $invoice, string $code): Payment
     {
+        if ($invoice->isGiftVoucherPurchase()) {
+            throw new LogicException('A gift voucher cannot be paid for with another gift voucher.');
+        }
+
         $code = strtoupper(trim($code));
 
         $voucher = GiftVoucher::query()->where('code', $code)->first();

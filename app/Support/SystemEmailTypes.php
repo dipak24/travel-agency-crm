@@ -22,6 +22,8 @@ class SystemEmailTypes
 
     public const STAFF_PASSWORD_RESET = 'staff_password_reset';
 
+    public const STAFF_ACCOUNT_SETUP = 'staff_account_setup';
+
     public const MAIL_SETTINGS_TEST = 'mail_settings_test';
 
     /**
@@ -42,6 +44,13 @@ class SystemEmailTypes
                 'description' => 'Sent when a travel agency\'s staff member uses "Forgot password" on the tenant panel login.',
                 'subject' => 'Reset your {{ tenant_name }} staff password',
                 'body' => '<p>Hello {{ user_name }},</p><p>We received a request to reset the password for your {{ tenant_name }} staff account.</p><p><a href="{{ reset_url }}">Reset password</a></p><p>This link will expire in {{ expire_minutes }} minutes. If you did not request a password reset, no further action is required.</p>',
+                'merge_tags' => ['user_name', 'reset_url', 'expire_minutes', 'tenant_name', 'app_name'],
+            ],
+            self::STAFF_ACCOUNT_SETUP => [
+                'name' => 'Account setup — tenant staff',
+                'description' => 'Sent when a travel agency\'s owner or staff account is created (by a Super Admin or the tenant), inviting them to choose their own password.',
+                'subject' => 'Set up your {{ tenant_name }} staff account',
+                'body' => '<p>Hello {{ user_name }},</p><p>A staff account has been created for you at {{ tenant_name }} on {{ app_name }}.</p><p><a href="{{ reset_url }}">Set your password</a></p><p>This link will expire in {{ expire_minutes }} minutes and can only be used once. If you weren\'t expecting this, you can ignore this email.</p>',
                 'merge_tags' => ['user_name', 'reset_url', 'expire_minutes', 'tenant_name', 'app_name'],
             ],
             self::MAIL_SETTINGS_TEST => [

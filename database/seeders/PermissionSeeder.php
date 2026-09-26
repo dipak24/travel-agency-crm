@@ -84,6 +84,7 @@ class PermissionSeeder extends Seeder
             'delete catalog',
             'manage settings',
             'manage communications',
+            'view audit log',
         ], 'tenant');
         $portalPermission = $this->permissions(['access portal'], 'customer');
 

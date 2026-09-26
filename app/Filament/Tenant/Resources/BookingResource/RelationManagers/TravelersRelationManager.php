@@ -2,12 +2,11 @@
 
 namespace App\Filament\Tenant\Resources\BookingResource\RelationManagers;
 
+use App\Filament\Tenant\Resources\BookingTravelerResource;
+use App\Models\BookingTraveler;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
-use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
@@ -19,16 +18,7 @@ class TravelersRelationManager extends RelationManager
 
     public function form(Schema $schema): Schema
     {
-        return $schema->components([
-            TextInput::make('name')->required()->maxLength(255),
-            TextInput::make('passport_no')->label('Passport number')->maxLength(255),
-            DatePicker::make('dob')->label('Date of birth')->native(false),
-            Select::make('document_status')->options([
-                'pending' => 'Pending',
-                'received' => 'Received',
-                'verified' => 'Verified',
-            ])->default('pending')->required(),
-        ])->columns(1);
+        return $schema->components(BookingTravelerResource::detailsSchema())->columns(1);
     }
 
     public function table(Table $table): Table
@@ -36,8 +26,11 @@ class TravelersRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('name')
             ->columns([
-                TextColumn::make('name')->searchable()->sortable(),
+                TextColumn::make('name')->label('Full name')->searchable()->sortable()
+                    ->description(fn (BookingTraveler $record): string => collect([$record->email, $record->phone])->filter()->implode(' · ')),
+                TextColumn::make('nationality.nationality')->label('Nationality')->placeholder('—'),
                 TextColumn::make('dob')->date(),
+                TextColumn::make('documents_count')->label('Documents')->counts('documents'),
                 TextColumn::make('document_status')->badge(),
             ])
             ->headerActions([CreateAction::make()])

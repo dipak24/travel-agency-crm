@@ -96,7 +96,7 @@ test('starting paypal checkout redirects the customer to paypals approval url', 
     ]);
 
     $this->actingAs($customer, 'customer')
-        ->get("/portal/pay/paypal/{$invoice->id}/start")
+        ->get(portalUrl($tenant, "/portal/pay/paypal/{$invoice->id}/start"))
         ->assertRedirect('https://sandbox.paypal.com/checkoutnow?token=ORDER123');
 });
 
@@ -107,8 +107,8 @@ test('starting checkout for a gateway the tenant has not enabled is refused', fu
     $invoice = paymentGatewayInvoice($customer, ['total' => 50000]);
 
     $this->actingAs($customer, 'customer')
-        ->get("/portal/pay/paypal/{$invoice->id}/start")
-        ->assertRedirect(route('filament.portal.resources.invoices.view', ['record' => $invoice->id]))
+        ->get(portalUrl($tenant, "/portal/pay/paypal/{$invoice->id}/start"))
+        ->assertRedirect(portalRoute($tenant, 'filament.portal.resources.invoices.view', ['record' => $invoice->id]))
         ->assertSessionHas('payment_error');
 });
 
@@ -121,7 +121,7 @@ test('a customer cannot start checkout for another customers invoice', function 
     $invoice = paymentGatewayInvoice($otherCustomer);
 
     $this->actingAs($customer, 'customer')
-        ->get("/portal/pay/paypal/{$invoice->id}/start")
+        ->get(portalUrl($tenant, "/portal/pay/paypal/{$invoice->id}/start"))
         ->assertForbidden();
 });
 
@@ -146,7 +146,7 @@ test('returning from paypal captures the order and records a completed payment',
     ]);
 
     $this->actingAs($customer, 'customer')
-        ->get("/portal/pay/paypal/{$invoice->id}/return?token=ORDER123")
+        ->get(portalUrl($tenant, "/portal/pay/paypal/{$invoice->id}/return?token=ORDER123"))
         ->assertRedirect();
 
     $payment = Payment::query()->withoutGlobalScopes()->where('transaction_ref', 'CAPTURE123')->first();
@@ -239,11 +239,11 @@ test('choosing pay later leaves the invoice unpaid and sends the customer back w
     $invoice = paymentGatewayInvoice($customer, ['total' => 50000]);
 
     $this->actingAs($customer, 'customer')
-        ->get("/portal/pay/pay_later/{$invoice->id}/start")
-        ->assertRedirect(route('payments.return', ['gateway' => 'pay_later', 'invoice' => $invoice->id]));
+        ->get(portalUrl($tenant, "/portal/pay/pay_later/{$invoice->id}/start"))
+        ->assertRedirect(portalRoute($tenant, 'payments.return', ['gateway' => 'pay_later', 'invoice' => $invoice->id]));
 
-    $this->get(route('payments.return', ['gateway' => 'pay_later', 'invoice' => $invoice->id]))
-        ->assertRedirect(route('filament.portal.resources.invoices.view', ['record' => $invoice->id]))
+    $this->get(portalRoute($tenant, 'payments.return', ['gateway' => 'pay_later', 'invoice' => $invoice->id]))
+        ->assertRedirect(portalRoute($tenant, 'filament.portal.resources.invoices.view', ['record' => $invoice->id]))
         ->assertSessionHas('payment_pending');
 
     expect($invoice->refresh()->status)->toBe('issued')
@@ -257,8 +257,8 @@ test('starting pay later checkout is refused when the tenant has not enabled it'
     $invoice = paymentGatewayInvoice($customer, ['total' => 50000]);
 
     $this->actingAs($customer, 'customer')
-        ->get("/portal/pay/pay_later/{$invoice->id}/start")
-        ->assertRedirect(route('filament.portal.resources.invoices.view', ['record' => $invoice->id]))
+        ->get(portalUrl($tenant, "/portal/pay/pay_later/{$invoice->id}/start"))
+        ->assertRedirect(portalRoute($tenant, 'filament.portal.resources.invoices.view', ['record' => $invoice->id]))
         ->assertSessionHas('payment_error');
 });
 

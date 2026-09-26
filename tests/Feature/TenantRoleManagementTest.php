@@ -46,7 +46,7 @@ test('a newly onboarded tenant owner immediately has every tenant permission, no
         ->and($owner->hasPermissionTo('view staff'))->toBeTrue()
         ->and($owner->hasPermissionTo('view roles'))->toBeTrue();
 
-    $this->actingAs($owner, 'tenant')->get('/tenant')->assertOk();
+    $this->actingAsStaff($owner)->get('/tenant')->assertOk();
 });
 
 test('the tenant owner role cannot be edited or deleted from the tenant portal, even by the owner', function () {
@@ -60,7 +60,7 @@ test('the tenant owner role cannot be edited or deleted from the tenant portal, 
     $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('team_id', $tenant->getKey())->firstOrFail();
     $tenantContext->clear();
 
-    $this->actingAs($owner, 'tenant')
+    $this->actingAsStaff($owner)
         ->get("/tenant/roles/{$ownerRole->getKey()}/edit")
         ->assertForbidden();
 

@@ -53,8 +53,12 @@ return new class extends Migration
             $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
             $table->foreignId('booking_id')->constrained()->cascadeOnDelete();
             $table->string('name');
+            $table->string('email')->nullable();
+            $table->string('phone')->nullable();
             $table->text('passport_no')->nullable();
             $table->date('dob')->nullable();
+            $table->foreignId('nationality_id')->nullable()->constrained('countries')->nullOnDelete();
+            $table->text('address')->nullable();
             $table->string('document_status')->default('pending');
             $table->timestamps();
             $table->index(['tenant_id', 'booking_id']);
@@ -64,6 +68,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
             $table->foreignId('booking_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('booking_traveler_id')->nullable()->constrained('booking_travelers')->cascadeOnDelete();
             $table->string('uploaded_by');
             $table->string('file_path');
             $table->string('doc_type');

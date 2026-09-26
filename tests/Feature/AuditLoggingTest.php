@@ -23,7 +23,7 @@ test('creating a booking logs an activity attributed to the acting tenant staff 
 
     app(TenantContext::class)->set($tenant);
     $owner = TenantUser::factory()->create();
-    $this->actingAs($owner, 'tenant');
+    $this->actingAsStaff($owner);
 
     $booking = Booking::query()->create([
         'customer_id' => Customer::factory()->create()->id,
@@ -45,7 +45,7 @@ test('a booking traveler activity never includes the encrypted passport number',
 
     app(TenantContext::class)->set($tenant);
     $owner = TenantUser::factory()->create();
-    $this->actingAs($owner, 'tenant');
+    $this->actingAsStaff($owner);
 
     $booking = Booking::query()->create([
         'customer_id' => Customer::factory()->create()->id,
@@ -71,7 +71,7 @@ test('the activity log causer resolver checks the super_admin, tenant, and custo
 
     app(TenantContext::class)->set($tenant);
     $staff = TenantUser::factory()->create();
-    $this->actingAs($staff, 'tenant');
+    $this->actingAsStaff($staff);
 
     expect(app(CauserResolver::class)->resolve()?->is($staff))->toBeTrue();
 

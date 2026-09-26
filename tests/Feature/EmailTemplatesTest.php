@@ -10,7 +10,7 @@ use App\Models\SubscriptionPlan;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Notifications\BookingStatusChanged;
-use App\Notifications\CustomerPortalInvite;
+use App\Notifications\CustomerAccountLink;
 use App\Services\Mail\EmailTemplates;
 use App\Services\TenantOnboarding;
 use App\Support\TenantContext;
@@ -166,7 +166,7 @@ test('a merge tag the rich text editor URL-encoded inside a link is still substi
         ->update(['body_html' => '<p><a href="%7B%7B%20action_url%20%7D%7D">Set password</a></p>']);
 
     $customer = app(TenantContext::class)->wrap($tenant, fn (): Customer => Customer::factory()->create());
-    $mail = (new CustomerPortalInvite('https://portal.test/reset?token=abc&email=x'))->toMail($customer);
+    $mail = (new CustomerAccountLink('https://portal.test/reset?token=abc&email=x', isInvite: true))->toMail($customer);
 
     expect($mail->viewData['html'])->toBe('<p><a href="https://portal.test/reset?token=abc&amp;email=x">Set password</a></p>');
 });
@@ -202,7 +202,7 @@ test('staff without the communications permission cannot open email templates', 
     $tenant = templatesTenant('northwind');
     $staff = app(TenantContext::class)->wrap($tenant, fn (): TenantUser => TenantUser::factory()->create(['tenant_id' => $tenant->id]));
 
-    $this->actingAs($staff, 'tenant')->get('/tenant/email-templates')->assertForbidden();
+    $this->actingAsStaff($staff)->get('/tenant/email-templates')->assertForbidden();
 });
 
 test('the template list seeds any missing transactional templates for the tenant', function () {
@@ -211,7 +211,7 @@ test('the template list seeds any missing transactional templates for the tenant
     $tenant = $owner->tenant;
     EmailTemplate::query()->withoutGlobalScopes()->where('tenant_id', $tenant->id)->delete();
 
-    $this->actingAs($owner, 'tenant')->get('/tenant/email-templates')->assertOk()->assertSee('Booking status changed');
+    $this->actingAsStaff($owner)->get('/tenant/email-templates')->assertOk()->assertSee('Booking status changed');
 
     expect(EmailTemplate::query()->withoutGlobalScopes()->where('tenant_id', $tenant->id)->count())
         ->toBe(count(TransactionalEmailTypes::all()));

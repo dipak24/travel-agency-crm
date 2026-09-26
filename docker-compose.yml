@@ -45,6 +45,29 @@ services:
       - laravel_cache:/var/www/html/bootstrap/cache
     restart: unless-stopped
 
+  # Runs routes/console.php's schedule: daily booking reminders, scheduled email campaigns
+  # (checked every minute), and gift-voucher expiry. Without it no scheduled command ever fires.
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: php artisan schedule:work
+    env_file:
+      - .env
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: pgsql
+      DB_PORT: 5432
+    depends_on:
+      app:
+        condition: service_healthy
+      pgsql:
+        condition: service_healthy
+    volumes:
+      - laravel_storage:/var/www/html/storage
+      - laravel_cache:/var/www/html/bootstrap/cache
+    restart: unless-stopped
+
   pgsql:
     image: postgres:16-alpine
     ports:

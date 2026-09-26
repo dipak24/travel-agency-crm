@@ -16,8 +16,10 @@ test('the application returns a successful response', function () {
 });
 
 test('tenant and customer panels expose dedicated login pages', function () {
-    $this->get('/tenant/login')->assertSuccessful();
-    $this->get('/portal/login')->assertSuccessful();
+    $tenant = Tenant::query()->create(['name' => 'Travel Agency', 'slug' => 'travel-agency']);
+
+    $this->get(portalUrl($tenant, '/tenant/login'))->assertSuccessful();
+    $this->get(portalUrl($tenant, '/portal/login'))->assertSuccessful();
 });
 
 test('each guard accepts valid credentials and rejects invalid credentials', function () {
@@ -76,6 +78,6 @@ test('authenticated users reach only their own panel dashboard', function () {
     ]);
 
     $this->actingAs($superAdmin, 'super_admin')->get('/admin')->assertSuccessful();
-    $this->actingAs($tenantUser, 'tenant')->get('/tenant')->assertSuccessful();
-    $this->actingAs($customer, 'customer')->get('/portal')->assertSuccessful();
+    $this->actingAsStaff($tenantUser)->get('/tenant')->assertSuccessful();
+    $this->actingAs($customer, 'customer')->get(portalUrl($tenant))->assertSuccessful();
 });

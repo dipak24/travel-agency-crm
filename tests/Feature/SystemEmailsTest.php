@@ -13,6 +13,7 @@ use App\Notifications\PasswordResetRequested;
 use App\Notifications\TestMailSettingNotification;
 use App\Services\Mail\CampaignSender;
 use App\Services\Mail\EmailTemplates;
+use App\Support\AgencySubdomain;
 use App\Support\SystemEmailTypes;
 use App\Support\TenantContext;
 use App\Support\TransactionalEmailTypes;
@@ -83,7 +84,8 @@ test('the staff reset email names the agency and goes through the agency\'s own 
     $mail = systemResetMail($staff);
 
     expect($mail['subject'])->toBe('Reset your Northwind Travel staff password')
-        ->and($mail['html'])->toContain('https://app.test/reset/token-123')
+        ->and($mail['html'])->toContain(AgencySubdomain::rootFor($tenant).'/tenant/password-reset/reset?')
+        ->and($mail['html'])->toContain('token=token-123')
         ->and($mail['mailer'])->toBe("tenant_dynamic_{$tenant->id}")
         ->and($mail['from'])->toBe(['hello@northwind.test', 'Northwind'])
         ->and(config('mail.default'))->not->toBe("tenant_dynamic_{$tenant->id}");
@@ -169,13 +171,14 @@ test('tenants never see platform system emails', function () {
     $this->seed();
     $owner = TenantUser::query()->withoutGlobalScopes()->where('email', 'staff@example.com')->firstOrFail();
 
-    $this->actingAs($owner, 'tenant')->get('/tenant/email-templates')
+    $this->actingAsStaff($owner)->get('/tenant/email-templates')
         ->assertOk()
         ->assertSee('Transactional emails')
         ->assertSee('Campaign templates')
         ->assertDontSee('Password reset — platform admins')
         ->assertDontSee('Password reset — tenant staff');
-    $this->actingAs($owner, 'tenant')->get('/admin/email-templates')->assertRedirect();
+    $this->actingAsStaff($owner)->get('/admin/email-templates')->assertNotFound();
+    $this->actingAs($owner, 'tenant')->get(config('app.url').'/admin/email-templates')->assertRedirect();
 });
 
 test('the SMTP test email is an editable system email', function () {

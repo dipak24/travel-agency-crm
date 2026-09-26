@@ -14,6 +14,9 @@ class CreateActivityLogTable extends Migration
             $table->text('description');
             $table->nullableMorphs('subject', 'subject');
             $table->nullableMorphs('causer', 'causer');
+            // Which tenant the logged change belongs to — filled by App\Models\Activity so the
+            // admin Audit Log can filter by tenant. Null for platform-level activity.
+            $table->unsignedBigInteger('tenant_id')->nullable()->index();
             $table->json('attribute_changes')->nullable();
             $table->json('properties')->nullable();
             $table->timestamps();

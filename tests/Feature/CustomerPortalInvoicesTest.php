@@ -64,7 +64,7 @@ test('a customer can view their invoice items and payments', function () {
     $invoice->payments()->create(['amount' => 50000, 'currency' => 'USD', 'method' => 'card', 'type' => 'installment', 'status' => 'completed']);
 
     $this->actingAs($customer, 'customer')
-        ->get("/portal/invoices/{$invoice->id}")
+        ->get(portalUrl($tenant, "/portal/invoices/{$invoice->id}"))
         ->assertOk()
         ->assertSee('Package deposit')
         ->assertSee('Card');
@@ -202,4 +202,28 @@ test('a gift voucher cannot be redeemed twice on the same invoice', function () 
 
     expect(fn () => app(InvoiceGiftVoucherRedemption::class)->redeem($invoice, 'ONCEONLY'))
         ->toThrow(LogicException::class, 'That gift voucher is not valid or has already been fully redeemed.');
+});
+
+test('a gift voucher purchase invoice cannot be paid with a promo code or another gift voucher', function () {
+    $tenant = portalInvoicesTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $customer = Customer::factory()->create();
+    $invoice = portalInvoiceFor($customer, ['booking_id' => null, 'purpose' => Invoice::PURPOSE_GIFT_VOUCHER_PURCHASE]);
+    PromoCode::query()->create(['code' => 'SAVE10', 'discount_type' => 'percent', 'discount_value' => 10, 'is_active' => true]);
+    GiftVoucher::query()->create(['code' => 'GIFT50', 'value' => 40000, 'status' => 'unredeemed']);
+
+    expect(fn () => app(InvoicePromoRedemption::class)->apply($invoice, 'SAVE10'))
+        ->toThrow(LogicException::class, 'Promo codes cannot be used to buy a gift voucher.')
+        ->and(fn () => app(InvoiceGiftVoucherRedemption::class)->redeem($invoice, 'GIFT50'))
+        ->toThrow(LogicException::class, 'A gift voucher cannot be paid for with another gift voucher.');
+
+    $invoice->refresh();
+    expect($invoice->total)->toBe(100000)
+        ->and($invoice->balanceDue())->toBe(100000);
+
+    Filament::setCurrentPanel('portal');
+
+    Livewire::actingAs($customer, 'customer')->test(ViewInvoice::class, ['record' => $invoice->getRouteKey()])
+        ->assertActionHidden('applyPromoCode')
+        ->assertActionHidden('redeemGiftVoucher');
 });

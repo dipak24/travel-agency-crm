@@ -2,7 +2,10 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\AgencyBranding;
+use App\Filament\Portal\Pages\Auth\ResetPassword;
 use App\Filament\Portal\Pages\Profile;
+use App\Http\Middleware\ResolveAgencySubdomain;
 use App\Http\Middleware\ResolveTenant;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -20,20 +23,25 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
+/**
+ * The customer portal, served only on the agency's own subdomain ({slug}.{agency.domain}/portal)
+ * with the agency's branding — see ResolveAgencySubdomain and AgencyBranding.
+ */
 class PortalPanelProvider extends PanelProvider
 {
     public function panel(Panel $panel): Panel
     {
-        return $panel
+        return AgencyBranding::apply($panel
             ->id('portal')
             ->path('portal')
             ->authGuard('customer')
             ->authPasswordBroker('customers')
             ->login()
-            ->passwordReset()
+            ->passwordReset(resetAction: ResetPassword::class)
             ->profile(Profile::class)
             ->colors([
                 'primary' => Color::Amber,
+                'secondary' => Color::Blue,
             ])
             ->maxContentWidth(Width::Full)
             ->discoverResources(in: app_path('Filament/Portal/Resources'), for: 'App\Filament\Portal\Resources')
@@ -43,6 +51,7 @@ class PortalPanelProvider extends PanelProvider
             ])
             ->discoverWidgets(in: app_path('Filament/Portal/Widgets'), for: 'App\Filament\Portal\Widgets')
             ->middleware([
+                ResolveAgencySubdomain::class,
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,
@@ -57,6 +66,7 @@ class PortalPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
                 ResolveTenant::class,
-            ], isPersistent: true);
+            ], isPersistent: true)
+            ->persistentMiddleware([ResolveAgencySubdomain::class]));
     }
 }

@@ -846,21 +846,19 @@ email fully works outside the test suite (checked 2026-09-25).
 
 **Email — required before email works in a running environment**
 
-- [ ] **Rebuild the containers** (`docker compose up -d --build`). The `queue`
-      container still runs the old image — it has no `app/Jobs` folder and none
-      of the new notification classes — so anything processed by the queue
-      fails there: campaign sending (`App\Jobs\SendEmailCampaign`) and every
-      "Forgot password" email (`PasswordResetRequested` is queued). The source
-      code isn't bind-mounted into the containers (see `.ai/rules/general.md`),
-      so a rebuild is needed after every code change for the queue worker.
-- [ ] **Add a scheduler service.** `docker-compose.yml` has `app` and `queue`
-      but nothing runs `php artisan schedule:work` (or a cron calling
-      `schedule:run`), so no scheduled command ever fires:
-      `app:send-booking-reminders` (daily 08:00), `app:send-scheduled-campaigns`
-      (every minute), and the existing `app:expire-gift-vouchers` (daily).
-      Suggested: a `scheduler` service built from the same `Dockerfile` as
-      `queue`, with `command: php artisan schedule:work`. Also needed in
-      production (cron or a supervisor process).
+- [x] **Rebuild the containers** — done 2026-09-25 (`docker compose up -d
+      --build`). Verified end to end: a queued "Forgot password" email was
+      picked up and delivered by the `queue` worker, with no failed jobs.
+      Keep in mind: source code isn't bind-mounted into the containers (see
+      `.ai/rules/general.md`), so the `queue`/`scheduler` containers need a
+      rebuild after every code change.
+- [x] **Add a scheduler service** — done 2026-09-25. New `scheduler` service
+      in `docker-compose.yml` (same `Dockerfile`, `command: php artisan
+      schedule:work`, starts after `app` is healthy so migrations never race).
+      It runs `app:send-booking-reminders` (daily 08:00),
+      `app:send-scheduled-campaigns` (every minute) and
+      `app:expire-gift-vouchers` (daily). Production still needs its own cron
+      (`schedule:run` every minute) or a supervised `schedule:work`.
 - [ ] **Configure real mail delivery.** `.env` has `MAIL_MAILER=log`, and no
       platform or tenant SMTP settings are enabled, so every email (password
       resets, invoices, reminders, campaigns) is currently written to
@@ -1004,8 +1002,23 @@ new "Marketing" nav group gated by `manage marketing`
       `InvoiceItem`, `Payment`) — other phases' models (Customer, Lead,
       TenantUser, catalog, etc.) are not yet wired; extend as those phases' own
       audit-logging needs come up, same pattern
-- [ ] List activity log entries
-- [ ] Filter by tenant / user / date
+- [x] List activity log entries — admin **Platform → Audit Log**
+      (`ActivityLogResource`, built 2026-09-25): when, tenant (or
+      "Platform"), user and user type (Platform admin / Staff / Customer /
+      System), event, and record (e.g. "Booking #12"). Each entry opens a
+      detail view with a field-by-field **before / after** table. Strictly
+      read-only (`ActivityPolicy` denies create/update/delete to everyone,
+      Super Admins included — audit entries are evidence), gated by
+      `manage platform`.
+- [x] Filter by tenant / user / date — plus event and record type. The log
+      had no tenant column, so `activity_log` gained a nullable, indexed
+      `tenant_id` (added to the original migration). A new `App\Models\Activity`
+      (registered as `activitylog.activity_model`) fills it on every new entry
+      from the logged record's own `tenant_id`, falling back to the acting
+      user's tenant, then the current `TenantContext`. User names are looked
+      up without tenant scopes, since the log is cross-tenant. Existing dev
+      entries were backfilled from their records. Covered by
+      `tests/Feature/AuditLogViewerTest.php`.
 
 **Support/Ticketing** — later, not in current scope.
 

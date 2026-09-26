@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\AgencySubdomain;
 use Database\Factories\TenantUserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
@@ -40,10 +41,16 @@ class TenantUser extends Authenticatable implements FilamentUser
         return $this->hasMany(Booking::class, 'created_by_staff_id');
     }
 
+    /**
+     * On an agency subdomain, only that agency's own staff get in.
+     */
     public function canAccessPanel(Panel $panel): bool
     {
+        $agency = app(AgencySubdomain::class)->get();
+
         return $this->status === 'active'
             && $panel->getId() === 'tenant'
+            && ($agency === null || $agency->getKey() === $this->tenant_id)
             && $this->tenant?->status !== 'suspended';
     }
 

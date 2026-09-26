@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Enums\CustomerStatus;
+use App\Models\Country;
 use App\Models\Customer;
 use App\Models\SubscriptionPlan;
 use App\Models\SuperAdmin;
@@ -23,6 +25,8 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        $this->call(CountrySeeder::class);
+
         $admin = SuperAdmin::query()->updateOrCreate(
             ['email' => 'admin@example.com'],
             ['name' => 'Platform Admin', 'password' => 'password', 'status' => 'active'],
@@ -46,15 +50,19 @@ class DatabaseSeeder extends Seeder
         app(TenantContext::class)->set($tenant);
         $staff->assignRole(Role::findOrCreate('Tenant Owner', 'tenant'));
 
-        Customer::query()->withoutGlobalScopes()->updateOrCreate(
+        $customer = Customer::query()->withoutGlobalScopes()->updateOrCreate(
             ['tenant_id' => $tenant->id, 'email' => 'customer@example.com'],
             [
                 'name' => 'Demo Customer',
                 'password' => 'password',
                 'phone' => '+1 555 0100',
                 'type' => 'individual',
+                'date_of_birth' => '1990-04-14',
+                'nationality_id' => Country::query()->where('iso2', 'NP')->value('id'),
+                'country_of_residence_id' => Country::query()->where('iso2', 'NP')->value('id'),
             ],
         );
+        $customer->forceFill(['status' => CustomerStatus::Active, 'email_verified_at' => $customer->email_verified_at ?? now()])->save();
 
         TenantSubscription::query()->updateOrCreate(
             ['tenant_id' => $tenant->id, 'plan_id' => $plan->id],

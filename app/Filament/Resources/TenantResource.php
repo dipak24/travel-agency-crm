@@ -2,9 +2,13 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\SendsAccountLinks;
 use App\Filament\Resources\TenantResource\Pages;
 use App\Models\SubscriptionPlan;
 use App\Models\Tenant;
+use App\Models\TenantUser;
+use App\Services\Auth\AccountSetupLinks;
+use App\Support\AgencySubdomain;
 use BackedEnum;
 use DateTimeZone;
 use Filament\Actions\Action;
@@ -25,13 +29,15 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 use UnitEnum;
 
 class TenantResource extends Resource
 {
+    use SendsAccountLinks;
+
     protected static ?string $model = Tenant::class;
 
     protected static ?string $navigationLabel = 'Tenants';
@@ -50,9 +56,19 @@ class TenantResource extends Resource
                 Section::make('Platform settings')
                     ->columnSpanFull()
                     ->schema([
-                        TextInput::make('slug')->required()->maxLength(255)->alphaDash()
+                        TextInput::make('slug')->label('Agency subdomain')->required()->maxLength(63)
+                            ->prefix(fn (): string => parse_url((string) config('app.url'), PHP_URL_SCHEME).'://')
+                            ->suffix(fn (): string => '.'.config('agency.domain'))
+                            ->helperText('The agency\'s own address: staff sign in at /tenant and customers at /portal on it. Lowercase letters, numbers and hyphens only. Changing it breaks links staff and customers already have.')
                             ->rules(fn (?Tenant $record): array => [
+                                // A valid DNS label: what an agency subdomain has to be.
+                                'regex:/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/',
+                                Rule::notIn(config('agency.reserved_subdomains')),
                                 Rule::unique('tenants', 'slug')->ignore($record?->getKey()),
+                            ])
+                            ->validationMessages([
+                                'regex' => 'Use lowercase letters, numbers and hyphens only, not starting or ending with a hyphen.',
+                                'not_in' => 'This name is reserved by the platform. Choose another.',
                             ]),
                         Select::make('status')->options([
                             'trial' => 'Trial',
@@ -82,12 +98,15 @@ class TenantResource extends Resource
                     ->columns(2),
                 Section::make('Branding')
                     ->columnSpanFull()
-                    ->description('Controls how the tenant panel looks once this tenant\'s staff log in. Only a platform admin can set this — it does not appear in the tenant panel itself.')
+                    ->description('How this agency\'s own address looks — its staff panel and customer portal, including their login pages: the business name above, plus the logo, favicon and colours here. Only a platform admin can set this.')
                     ->schema([
                         ColorPicker::make('primary_color')->label('Primary color')
-                            ->helperText('Drives buttons, links, and active navigation in the tenant panel.'),
+                            ->rules(['nullable', 'regex:/^#[0-9a-fA-F]{6}$/'])
+                            ->helperText('Drives buttons, links, and active navigation.'),
                         ColorPicker::make('secondary_color')->label('Secondary color')
-                            ->helperText('Available as an accent color for the tenant panel.'),
+                            ->rules(['nullable', 'regex:/^#[0-9a-fA-F]{6}$/'])
+                            ->helperText('Available as an accent color.'),
+                        // No SVG for either upload: an SVG served from the public disk can carry script.
                         FileUpload::make('logo')
                             ->image()
                             ->disk('public')
@@ -95,8 +114,16 @@ class TenantResource extends Resource
                             ->visibility('public')
                             ->imagePreviewHeight('120')
                             ->maxSize(2048)
-                            ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp'])
-                            ->columnSpanFull(),
+                            ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp']),
+                        FileUpload::make('favicon')
+                            ->label('Favicon')
+                            ->helperText('The small icon in the browser tab. A square PNG or ICO, at least 32×32 pixels, max 512 KB.')
+                            ->disk('public')
+                            ->directory('tenant-favicons')
+                            ->visibility('public')
+                            ->imagePreviewHeight('64')
+                            ->maxSize(512)
+                            ->acceptedFileTypes(['image/png', 'image/x-icon', 'image/vnd.microsoft.icon']),
                     ])
                     ->columns(2),
                 Section::make('Billing details')
@@ -112,14 +139,11 @@ class TenantResource extends Resource
                     ->columns(2),
                 Section::make('Owner account')
                     ->columnSpanFull()
-                    ->description('The first staff account for this tenant, created with the "Tenant Owner" role.')
+                    ->description('The first staff account for this tenant, created with the "Tenant Owner" role. The owner is emailed a secure link to choose their own password.')
                     ->schema([
                         TextInput::make('owner_name')->label('Owner name')->required()->maxLength(255),
                         TextInput::make('owner_email')->label('Owner email')->email()->required()->maxLength(255)
                             ->rules([Rule::unique('tenant_users', 'email')]),
-                        TextInput::make('owner_password')->label('Owner password')->password()->revealable()->required()
-                            ->rules([Password::min(8)->mixedCase()->numbers()->symbols()])
-                            ->helperText('At least 8 characters, including an uppercase letter, a lowercase letter, a number, and a symbol.'),
                     ])
                     ->columns(2)
                     ->visibleOn('create'),
@@ -150,7 +174,7 @@ class TenantResource extends Resource
             ->columns([
                 ImageColumn::make('logo')->label('')->circular()->defaultImageUrl(fn (Tenant $record): string => 'https://ui-avatars.com/api/?name='.urlencode($record->name).'&background=random'),
                 TextColumn::make('name')->label('Business name')->weight('bold')->searchable()->sortable()
-                    ->description(fn (Tenant $record): string => $record->slug),
+                    ->description(fn (Tenant $record): string => AgencySubdomain::rootFor($record)),
                 TextColumn::make('status')->badge()->sortable()
                     ->color(fn (string $state): string => match ($state) {
                         'active' => 'success',
@@ -191,6 +215,28 @@ class TenantResource extends Resource
                         ->requiresConfirmation()
                         ->visible(fn (Tenant $record): bool => $record->status === 'suspended')
                         ->action(fn (Tenant $record) => $record->update(['status' => 'active'])),
+                    Action::make('sendStaffAccessLink')
+                        ->label('Send password reset link')
+                        ->icon('heroicon-o-key')
+                        ->visible(fn (Tenant $record): bool => ! $record->trashed()
+                            && (bool) auth('super_admin')->user()?->can('update', $record))
+                        ->modalDescription('The staff member is emailed a secure, single-use link to choose their own password — a setup link if they have never set one.')
+                        ->form([
+                            Select::make('tenant_user_id')->label('Staff account')
+                                ->options(fn (Tenant $record): array => static::staffAccounts($record)
+                                    ->mapWithKeys(fn (TenantUser $user): array => [$user->id => "{$user->name} ({$user->email})"])
+                                    ->all())
+                                ->default(fn (Tenant $record): ?int => static::staffAccounts($record)->first()?->id)
+                                ->helperText('Defaults to the owner (the tenant\'s first account).')
+                                ->required(),
+                        ])
+                        ->action(function (Tenant $record, array $data): void {
+                            $user = static::staffAccounts($record)->firstWhere('id', (int) $data['tenant_user_id']);
+
+                            if ($user !== null) {
+                                static::sendStaffAccessLink($user);
+                            }
+                        }),
                     DeleteAction::make(),
                     RestoreAction::make(),
                 ])
@@ -200,6 +246,30 @@ class TenantResource extends Resource
                     ->size('sm')
                     ->tooltip('Actions'),
             ]);
+    }
+
+    public static function sendStaffAccessLink(TenantUser $user): void
+    {
+        static::deliverAccountLink(
+            fn (): bool => app(AccountSetupLinks::class)->sendStaffLink($user),
+            'Link sent',
+            "A secure link was emailed to {$user->email}.",
+        );
+    }
+
+    /**
+     * The tenant's active staff, oldest first (so the owner, created at onboarding, leads). Tenant
+     * scope is bypassed because the admin panel has no tenant context.
+     *
+     * @return Collection<int, TenantUser>
+     */
+    private static function staffAccounts(Tenant $tenant): Collection
+    {
+        return TenantUser::query()->withoutGlobalScopes()
+            ->where('tenant_id', $tenant->getKey())
+            ->where('status', 'active')
+            ->orderBy('id')
+            ->get();
     }
 
     public static function getRelations(): array

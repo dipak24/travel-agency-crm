@@ -10,6 +10,7 @@ use App\Models\Reminder;
 use App\Models\Tenant;
 use App\Notifications\BookingReminder;
 use App\Services\Mail\TenantMailer;
+use App\Support\AgencySubdomain;
 use App\Support\Money;
 use App\Support\TenantContext;
 use App\Support\TransactionalEmailTypes;
@@ -180,7 +181,7 @@ class BookingReminders
             'trip_name' => $booking->trip_name,
             'start_date' => $booking->start_date->toFormattedDateString(),
             'days_until' => $daysUntil,
-            'portal_url' => url('/portal'),
+            'portal_url' => AgencySubdomain::url($booking->tenant),
         ];
 
         if ($type === self::BALANCE_DUE) {

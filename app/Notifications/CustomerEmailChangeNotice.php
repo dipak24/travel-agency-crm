@@ -8,11 +8,14 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class CustomerPortalInvite extends Notification
+/**
+ * Warns the customer's *current* address that a change to a new address was requested.
+ */
+class CustomerEmailChangeNotice extends Notification
 {
     use Queueable, RendersEmailTemplate;
 
-    public function __construct(public string $url) {}
+    public function __construct(public string $newEmail) {}
 
     /**
      * @return array<int, string>
@@ -24,9 +27,9 @@ class CustomerPortalInvite extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        return $this->transactionalMail($notifiable->tenant_id, TransactionalEmailTypes::PORTAL_INVITE, [
+        return $this->transactionalMail($notifiable->tenant_id, TransactionalEmailTypes::CUSTOMER_EMAIL_CHANGE_NOTICE, [
             'customer_name' => $notifiable->name,
-            'action_url' => $this->url,
+            'new_email' => $this->newEmail,
         ]);
     }
 }

@@ -15,7 +15,7 @@ test('a tenant owner can access the settings page and save billing details', fun
 
     $owner = TenantUser::query()->withoutGlobalScopes()->where('email', 'staff@example.com')->firstOrFail();
 
-    $this->actingAs($owner, 'tenant');
+    $this->actingAsStaff($owner);
     expect(Settings::canAccess())->toBeTrue();
 
     $test = Livewire::actingAs($owner, 'tenant')->test(Settings::class);
@@ -73,7 +73,7 @@ test('a tenant staff member without the manage settings permission is denied acc
 
     $tenantContext->clear();
 
-    $this->actingAs($salesAgent, 'tenant');
+    $this->actingAsStaff($salesAgent);
 
     expect(Settings::canAccess())->toBeFalse();
 });

@@ -5,6 +5,7 @@ namespace App\Filament\Resources\TenantResource\Pages;
 use App\Filament\Concerns\HasFullWidthForm;
 use App\Filament\Resources\TenantResource;
 use App\Models\SubscriptionPlan;
+use App\Models\TenantUser;
 use App\Services\TenantOnboarding;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
@@ -15,9 +16,12 @@ class CreateTenant extends CreateRecord
 
     protected static string $resource = TenantResource::class;
 
+    private ?string $ownerEmail = null;
+
     protected function handleRecordCreation(array $data): Model
     {
         $plan = SubscriptionPlan::query()->findOrFail($data['plan_id']);
+        $this->ownerEmail = $data['owner_email'];
 
         return app(TenantOnboarding::class)->create(
             [
@@ -38,10 +42,21 @@ class CreateTenant extends CreateRecord
             [
                 'name' => $data['owner_name'],
                 'email' => $data['owner_email'],
-                'password' => $data['owner_password'],
             ],
             $plan,
         );
+    }
+
+    /**
+     * The Super Admin never sets the owner's password — email the owner a link to choose it.
+     */
+    protected function afterCreate(): void
+    {
+        $owner = TenantUser::query()->withoutGlobalScopes()->where('email', $this->ownerEmail)->first();
+
+        if ($owner !== null) {
+            TenantResource::sendStaffAccessLink($owner);
+        }
     }
 
     protected function getRedirectUrl(): string

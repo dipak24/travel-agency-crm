@@ -17,6 +17,8 @@ class Invoice extends Model
 {
     use BelongsToTenant, LogsActivity, SoftDeletes, TracksInvoicePayments;
 
+    public const PURPOSE_GIFT_VOUCHER_PURCHASE = 'gift_voucher_purchase';
+
     protected $fillable = [
         'tenant_id',
         'booking_id',
@@ -36,6 +38,15 @@ class Invoice extends Model
         'purchaser_email',
         'purchaser_phone',
     ];
+
+    /**
+     * A gift voucher must be bought with real money — promo codes and other gift vouchers can
+     * never be applied to its invoice (InvoicePromoRedemption / InvoiceGiftVoucherRedemption).
+     */
+    public function isGiftVoucherPurchase(): bool
+    {
+        return $this->purpose === self::PURPOSE_GIFT_VOUCHER_PURCHASE;
+    }
 
     protected static function booted(): void
     {

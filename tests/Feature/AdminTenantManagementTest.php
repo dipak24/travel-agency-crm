@@ -8,11 +8,14 @@ use App\Models\SuperAdmin;
 use App\Models\Tenant;
 use App\Models\TenantSubscription;
 use App\Models\TenantUser;
+use App\Notifications\StaffAccountLink;
 use App\Support\TenantContext;
 use Filament\Actions\Testing\TestAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
@@ -52,6 +55,7 @@ test('a platform admin without the manage tenants permission is denied access', 
 
 test('a platform admin can create a tenant with an owner and a subscription plan', function () {
     $this->seed();
+    Notification::fake();
 
     $admin = SuperAdmin::query()->where('email', 'admin@example.com')->firstOrFail();
     $plan = SubscriptionPlan::query()->create(['name' => 'Growth', 'price' => 10000, 'billing_cycle' => 'monthly']);
@@ -69,7 +73,6 @@ test('a platform admin can create a tenant with an owner and a subscription plan
         'secondary_color' => '#0055ff',
         'owner_name' => 'Agency Owner',
         'owner_email' => 'owner@new-travel.test',
-        'owner_password' => 'Sup3rSecret!',
         'plan_id' => $plan->getKey(),
     ])
         ->call('create')
@@ -89,10 +92,31 @@ test('a platform admin can create a tenant with an owner and a subscription plan
     expect($owner->hasRole('Tenant Owner'))->toBeTrue();
     app(TenantContext::class)->clear();
 
-    expect(TenantSubscription::query()->withoutGlobalScopes()
-        ->where('tenant_id', $tenant->getKey())
-        ->where('plan_id', $plan->getKey())
-        ->exists())->toBeTrue();
+    expect($owner->password)->toBeNull()
+        ->and(TenantSubscription::query()->withoutGlobalScopes()
+            ->where('tenant_id', $tenant->getKey())
+            ->where('plan_id', $plan->getKey())
+            ->exists())->toBeTrue();
+
+    Notification::assertSentTo($owner, StaffAccountLink::class, fn (StaffAccountLink $notification): bool => $notification->isInvite);
+});
+
+test('a platform admin can email a tenant owner a password reset link instead of setting their password', function () {
+    $this->seed();
+    Notification::fake();
+
+    $admin = SuperAdmin::query()->where('email', 'admin@example.com')->firstOrFail();
+    $tenant = Tenant::factory()->active()->create();
+    $owner = app(TenantContext::class)->wrap($tenant, fn (): TenantUser => TenantUser::factory()->create(['password' => 'existing-password']));
+
+    Livewire::actingAs($admin, 'super_admin')->test(ListTenants::class)
+        ->callAction(TestAction::make('sendStaffAccessLink')->table($tenant))
+        ->assertHasNoActionErrors();
+
+    Notification::assertSentTo($owner, StaffAccountLink::class, fn (StaffAccountLink $notification): bool => ! $notification->isInvite
+        && str_contains($notification->url, '/tenant/password-reset/'));
+
+    expect(Hash::check('existing-password', $owner->fresh()->password))->toBeTrue();
 });
 
 test('the tenant logo upload rejects SVG files to prevent stored XSS via the public disk', function () {
@@ -113,7 +137,6 @@ test('the tenant logo upload rejects SVG files to prevent stored XSS via the pub
         'currency' => 'USD',
         'owner_name' => 'Agency Owner',
         'owner_email' => 'owner@malicious-agency.test',
-        'owner_password' => 'Sup3rSecret!',
         'plan_id' => $plan->getKey(),
         'logo' => UploadedFile::fake()->create('logo.svg', 10, 'image/svg+xml'),
     ])
@@ -150,7 +173,6 @@ test('creating a tenant rejects an owner email already used by staff in another 
         'currency' => 'USD',
         'owner_name' => 'Agency Owner',
         'owner_email' => 'shared@example.test',
-        'owner_password' => 'Sup3rSecret!',
         'plan_id' => $plan->getKey(),
     ])
         ->call('create')
@@ -183,7 +205,6 @@ test('creating a tenant rejects billing email, phone, or mobile number already u
         'currency' => 'USD',
         'owner_name' => 'Agency Owner',
         'owner_email' => 'owner@duplicate-details.test',
-        'owner_password' => 'Sup3rSecret!',
         'plan_id' => $plan->getKey(),
     ])
         ->call('create')
@@ -209,7 +230,6 @@ test('creating a tenant rejects a trial end date in the past', function () {
         'trial_ends_at' => now()->subDay(),
         'owner_name' => 'Agency Owner',
         'owner_email' => 'owner@past-trial.test',
-        'owner_password' => 'Sup3rSecret!',
         'plan_id' => $plan->getKey(),
     ])
         ->call('create')

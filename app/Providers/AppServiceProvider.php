@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Auth\TenantScopedUserProvider;
+use App\Models\Activity;
 use App\Models\Booking;
 use App\Models\BookingAddon;
 use App\Models\BookingDocument;
@@ -31,6 +32,7 @@ use App\Models\TenantInvoice;
 use App\Models\TenantPayment;
 use App\Models\TenantUser;
 use App\Notifications\PasswordResetRequested;
+use App\Policies\ActivityPolicy;
 use App\Policies\BookingAddonPolicy;
 use App\Policies\BookingDocumentPolicy;
 use App\Policies\BookingPolicy;
@@ -53,12 +55,16 @@ use App\Policies\TenantInvoicePolicy;
 use App\Policies\TenantPaymentPolicy;
 use App\Policies\TenantPolicy;
 use App\Policies\TenantUserPolicy;
+use App\Support\AgencySubdomain;
 use App\Support\TenantContext;
 use Filament\Auth\Notifications\ResetPassword as FilamentResetPasswordNotification;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -73,6 +79,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(TenantContext::class, fn (): TenantContext => new TenantContext);
+        $this->app->scoped(AgencySubdomain::class, fn (): AgencySubdomain => new AgencySubdomain);
 
         // Filament resolves its "Forgot password" notification from the container on every panel —
         // swap in the template-driven version (see PasswordResetRequested).
@@ -110,6 +117,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(SubscriptionPlan::class, SubscriptionPlanPolicy::class);
         Gate::policy(TenantInvoice::class, TenantInvoicePolicy::class);
         Gate::policy(TenantPayment::class, TenantPaymentPolicy::class);
+        Gate::policy(Activity::class, ActivityPolicy::class);
         Gate::policy(EmailTemplate::class, EmailTemplatePolicy::class);
         Gate::policy(EmailCampaign::class, EmailCampaignPolicy::class);
         Gate::policy(PlatformEmailTemplate::class, PlatformEmailTemplatePolicy::class);
@@ -123,6 +131,23 @@ class AppServiceProvider extends ServiceProvider
             Limit::perMinute(5)->by($request->ip()),
             Limit::perDay(50)->by($request->ip()),
         ]);
+
+        // Every emailed setup/reset link (AccountSetupLinks, the portal's own "Forgot password")
+        // lands on Filament's reset page. Choosing a password there proves the user owns the
+        // address, so it verifies their email and activates a pending customer account.
+        Event::listen(PasswordReset::class, function (PasswordReset $event): void {
+            if ($event->user instanceof Customer) {
+                $event->user->markAccountActivated();
+            } elseif ($event->user instanceof TenantUser && $event->user->email_verified_at === null) {
+                $event->user->forceFill(['email_verified_at' => now()])->save();
+            }
+        });
+
+        Event::listen(Login::class, function (Login $event): void {
+            if ($event->user instanceof Customer) {
+                $event->user->forceFill(['last_login_at' => now()])->saveQuietly();
+            }
+        });
 
         Auth::provider('tenant_scoped', function ($app, array $config): TenantScopedUserProvider {
             return new TenantScopedUserProvider($app['hash'], $config['model']);

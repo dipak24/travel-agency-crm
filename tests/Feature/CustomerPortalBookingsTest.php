@@ -55,7 +55,7 @@ test('a customer cannot view another customer\'s booking detail page', function 
     // bookings entirely, so the record never resolves via route-model
     // binding in the first place. This also avoids leaking whether a booking
     // with that ID exists at all.
-    $this->actingAs($customer, 'customer')->get("/portal/bookings/{$otherBooking->id}")->assertNotFound();
+    $this->actingAs($customer, 'customer')->get(portalUrl($tenant, "/portal/bookings/{$otherBooking->id}"))->assertNotFound();
 });
 
 test('the current/past tabs split bookings by end date', function () {
@@ -94,7 +94,7 @@ test('a customer can view their booking itinerary, include/exclude list, and tra
     ]);
 
     $this->actingAs($customer, 'customer')
-        ->get("/portal/bookings/{$booking->id}")
+        ->get(portalUrl($tenant, "/portal/bookings/{$booking->id}"))
         ->assertOk()
         ->assertSee('Day 1')
         ->assertSee('Arrival in Kathmandu')
@@ -127,7 +127,7 @@ test('a customer can leave a note for staff, and staff can see it read-only on t
     $ownerRole = Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail();
     $owner->assignRole($ownerRole);
 
-    $this->actingAs($owner, 'tenant')
+    $this->actingAsStaff($owner)
         ->get("/tenant/bookings/{$booking->id}/edit")
         ->assertOk()
         ->assertSee('Please book a window seat.');

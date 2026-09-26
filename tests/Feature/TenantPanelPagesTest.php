@@ -29,8 +29,8 @@ test('tenant owner can access every tenant panel resource index and create page'
     ];
 
     foreach ($resources as $resource) {
-        $this->actingAs($staff, 'tenant')->get("/tenant/{$resource}")->assertOk();
-        $this->actingAs($staff, 'tenant')->get("/tenant/{$resource}/create")->assertOk();
+        $this->actingAsStaff($staff)->get("/tenant/{$resource}")->assertOk();
+        $this->actingAsStaff($staff)->get("/tenant/{$resource}/create")->assertOk();
     }
 });
 
@@ -60,7 +60,7 @@ test('every tenant panel resource index page has a working create button', funct
     ];
 
     foreach ($resources as $resource) {
-        $this->actingAs($staff, 'tenant')
+        $this->actingAsStaff($staff)
             ->get("/tenant/{$resource}")
             ->assertOk()
             ->assertSee("/tenant/{$resource}/create", false);
@@ -81,7 +81,7 @@ test('the tenant panel renders pages at full width', function () {
         ->where('email', 'staff@example.com')
         ->firstOrFail();
 
-    $this->actingAs($staff, 'tenant')
+    $this->actingAsStaff($staff)
         ->get('/tenant/bookings')
         ->assertOk()
         ->assertSee('fi-width-full', false);

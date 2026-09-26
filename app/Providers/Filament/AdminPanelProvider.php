@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Http\Middleware\EnsurePlatformDomain;
 use App\Http\Middleware\ResolvePlatformTeam;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -42,6 +43,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->middleware([
+                EnsurePlatformDomain::class,
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,
@@ -56,6 +58,7 @@ class AdminPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
                 ResolvePlatformTeam::class,
-            ], isPersistent: true);
+            ], isPersistent: true)
+            ->persistentMiddleware([EnsurePlatformDomain::class]);
     }
 }

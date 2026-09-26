@@ -25,7 +25,7 @@ class ViewInvoice extends ViewRecord
             Action::make('applyPromoCode')
                 ->label('Enter promo code')
                 ->icon('heroicon-o-tag')
-                ->visible(fn (Invoice $record): bool => $record->balanceDue() > 0)
+                ->visible(fn (Invoice $record): bool => $record->balanceDue() > 0 && ! $record->isGiftVoucherPurchase())
                 ->form([
                     TextInput::make('code')->label('Promo code')->required()->maxLength(255),
                 ])
@@ -43,7 +43,7 @@ class ViewInvoice extends ViewRecord
             Action::make('redeemGiftVoucher')
                 ->label('Redeem gift voucher')
                 ->icon('heroicon-o-gift')
-                ->visible(fn (Invoice $record): bool => $record->balanceDue() > 0)
+                ->visible(fn (Invoice $record): bool => $record->balanceDue() > 0 && ! $record->isGiftVoucherPurchase())
                 ->form([
                     TextInput::make('code')->label('Gift voucher code')->required()->maxLength(255),
                 ])

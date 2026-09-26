@@ -119,7 +119,7 @@ test('a staff member without the manage settings permission cannot access mail s
     $role = Role::create(['name' => 'Sales Agent', 'guard_name' => 'tenant', 'team_id' => $tenant->id]);
     $staff->assignRole($role);
 
-    $this->actingAs($staff, 'tenant');
+    $this->actingAsStaff($staff);
 
     expect(MailSettings::canAccess())->toBeFalse();
 });

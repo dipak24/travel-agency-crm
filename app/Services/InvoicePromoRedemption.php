@@ -21,6 +21,10 @@ class InvoicePromoRedemption
      */
     public function apply(Invoice $invoice, string $code): PromoCode
     {
+        if ($invoice->isGiftVoucherPurchase()) {
+            throw new LogicException('Promo codes cannot be used to buy a gift voucher.');
+        }
+
         $code = strtoupper(trim($code));
 
         $promo = PromoCode::query()->where('code', $code)->first();

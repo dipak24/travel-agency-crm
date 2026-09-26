@@ -3,6 +3,7 @@
 use App\Console\Commands\ExpireGiftVouchers;
 use App\Console\Commands\SendBookingReminders;
 use App\Console\Commands\SendScheduledCampaigns;
+use App\Models\Activity;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -14,3 +15,4 @@ Artisan::command('inspire', function () {
 Schedule::command(ExpireGiftVouchers::class)->daily();
 Schedule::command(SendBookingReminders::class)->dailyAt('08:00')->withoutOverlapping();
 Schedule::command(SendScheduledCampaigns::class)->everyMinute()->withoutOverlapping();
+Schedule::command('model:prune', ['--model' => [Activity::class]])->daily();

@@ -8,6 +8,7 @@ use App\Filament\Tenant\Resources\BookingResource\RelationManagers\PaymentsRelat
 use App\Filament\Tenant\Resources\BookingResource\RelationManagers\TravelersRelationManager;
 use App\Models\Booking;
 use App\Models\BookingDocument;
+use App\Models\BookingTraveler;
 use App\Models\Customer;
 use App\Models\IncludeExclude;
 use App\Services\FixedDepartureCapacity;
@@ -16,7 +17,9 @@ use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\CheckboxList;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
@@ -26,8 +29,12 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use UnitEnum;
 
 class BookingResource extends Resource
@@ -66,6 +73,8 @@ class BookingResource extends Resource
                             ->modalHeading('Add guest customer')),
                     TextInput::make('trip_name')->required()->maxLength(255),
                     Textarea::make('description')->rows(4),
+                    DatePicker::make('start_date')->label('Trip start date'),
+                    DatePicker::make('end_date')->label('Trip end date')->afterOrEqual('start_date'),
                     TextInput::make('pax_count')->numeric()->integer()->minValue(1)->required()->default(1),
                     MoneyInput::make('total_amount')->label('Total')->minValue(0)->required()->default(0),
                     Select::make('status')->options([
@@ -132,7 +141,7 @@ class BookingResource extends Resource
                         ->maxSize(BookingDocument::MAX_SIZE_KB)
                         ->helperText('Max 5 MB, min 10 KB per file.')
                         ->afterStateHydrated(function (FileUpload $component, ?Model $record) use ($docType): void {
-                            $component->state($record?->documents()->where('doc_type', $docType)->pluck('file_path')->all() ?? []);
+                            $component->state($record?->documents()->where('doc_type', $docType)->whereNull('booking_traveler_id')->pluck('file_path')->all() ?? []);
                         })
                         ->dehydrated(false))
                     ->values()
@@ -151,6 +160,7 @@ class BookingResource extends Resource
                                 ->options(static::documentTypes())
                                 ->disabled()
                                 ->dehydrated(),
+                            Hidden::make('booking_traveler_id'),
                             FileUpload::make('file_path')
                                 ->label('File')
                                 ->disk('local')
@@ -165,7 +175,10 @@ class BookingResource extends Resource
                             ])->default('pending')->required(),
                             TextInput::make('rejection_reason')->label('Rejection reason')->maxLength(255),
                         ])
-                        ->itemLabel(fn (array $state): ?string => static::documentTypes()[$state['doc_type'] ?? ''] ?? 'Document')
+                        ->itemLabel(fn (array $state): ?string => (static::documentTypes()[$state['doc_type'] ?? ''] ?? 'Document')
+                            .(filled($state['booking_traveler_id'] ?? null)
+                                ? ' — '.BookingTraveler::query()->whereKey($state['booking_traveler_id'])->value('name')
+                                : ''))
                         ->addable(false)
                         ->deletable(false)
                         ->reorderable(false)
@@ -207,33 +220,87 @@ class BookingResource extends Resource
     public static function table(Table $table): Table
     {
         return $table->columns([
-            TextColumn::make('trip_name')->searchable()->sortable(),
-            TextColumn::make('customer.name')->label('Customer')->searchable(),
-            TextColumn::make('fixedDeparture.start_date')->label('Departure')->date()->sortable(),
+            TextColumn::make('trip_name')->searchable()->sortable()->weight('bold'),
+            TextColumn::make('customer.name')->label('Customer')
+                ->description(fn (Booking $record): string => collect([$record->customer?->email, $record->customer?->phone])->filter()->implode(' · '))
+                ->searchable(query: fn (Builder $query, string $search): Builder => $query->whereHas(
+                    'customer',
+                    fn (Builder $customer): Builder => $customer->where(fn (Builder $match): Builder => $match
+                        ->whereLike('name', "%{$search}%")
+                        ->orWhereLike('email', "%{$search}%")
+                        ->orWhereLike('phone', "%{$search}%")),
+                )),
+            TextColumn::make('start_date')->label('Trip start')->date('M j, Y')->sortable()->placeholder('—')
+                ->state(fn (Booking $record): mixed => $record->start_date ?? $record->fixedDeparture?->start_date),
+            TextColumn::make('end_date')->label('Trip end')->date('M j, Y')->sortable()->placeholder('—')
+                ->state(fn (Booking $record): mixed => $record->end_date ?? $record->fixedDeparture?->end_date),
             TextColumn::make('pax_count')->label('Pax'),
             TextColumn::make('total_amount')->label('Total')->money(fn (): string => auth('tenant')->user()->tenant->currency ?? 'USD', divideBy: 100),
             TextColumn::make('status')->badge()->sortable(),
         ])
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with(['customer', 'fixedDeparture']))
             ->defaultSort('created_at', 'desc')
+            ->searchPlaceholder('Search trip, customer name, email or phone')
+            ->filters([
+                SelectFilter::make('trip_name')
+                    ->label('Trip name')
+                    ->options(fn (): array => Booking::query()->orderBy('trip_name')->distinct()->pluck('trip_name', 'trip_name')->all())
+                    ->searchable(),
+                Filter::make('trip_date')
+                    ->label('Trip date')
+                    ->schema([
+                        DatePicker::make('from')->label('Trip starts from'),
+                        DatePicker::make('until')->label('Trip starts until'),
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => $query
+                        ->when($data['from'] ?? null, fn (Builder $q, string $from): Builder => static::whereTripStart($q, '>=', $from))
+                        ->when($data['until'] ?? null, fn (Builder $q, string $until): Builder => static::whereTripStart($q, '<=', $until)))
+                    ->indicateUsing(fn (array $data): array => array_values(array_filter([
+                        filled($data['from'] ?? null) ? 'Trip starts from '.Carbon::parse($data['from'])->toFormattedDateString() : null,
+                        filled($data['until'] ?? null) ? 'Trip starts until '.Carbon::parse($data['until'])->toFormattedDateString() : null,
+                    ]))),
+            ])
             ->recordActions([
-                Action::make('cancelBooking')
-                    ->label('Cancel booking')
-                    ->icon('heroicon-o-x-circle')
-                    ->color('danger')
-                    ->requiresConfirmation()
-                    ->modalDescription('This releases any fixed-departure slot the booking was holding. It does not automatically cancel or refund existing invoices/payments.')
-                    ->visible(fn (Booking $record): bool => ! in_array($record->status, ['cancelled', 'completed'], true))
-                    ->action(function (Booking $record): void {
-                        if ($record->fixed_departure_id) {
-                            app(FixedDepartureCapacity::class)->release($record->fixedDeparture, $record->pax_count);
-                        }
-
-                        $record->update(['status' => 'cancelled']);
-                    }),
                 ActionGroup::make([
                     EditAction::make(),
-                ]),
+                    Action::make('cancelBooking')
+                        ->label('Cancel booking')
+                        ->icon('heroicon-o-x-circle')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalDescription('This releases any fixed-departure slot the booking was holding. It does not automatically cancel or refund existing invoices/payments.')
+                        ->visible(fn (Booking $record): bool => ! in_array($record->status, ['cancelled', 'completed'], true)
+                            && (bool) auth('tenant')->user()?->can('update', $record))
+                        ->action(function (Booking $record): void {
+                            if ($record->fixed_departure_id) {
+                                app(FixedDepartureCapacity::class)->release($record->fixedDeparture, $record->pax_count);
+                            }
+
+                            $record->update(['status' => 'cancelled']);
+                        }),
+                ])
+                    ->label('Actions')
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->color('gray')
+                    ->size('sm')
+                    ->tooltip('Actions'),
             ]);
+    }
+
+    /**
+     * A booking's trip start is its own start_date, or its fixed departure's when it has none.
+     *
+     * @param  Builder<Booking>  $query
+     * @param  '>='|'<='  $operator
+     * @return Builder<Booking>
+     */
+    private static function whereTripStart(Builder $query, string $operator, string $date): Builder
+    {
+        return $query->where(fn (Builder $trip): Builder => $trip
+            ->whereDate('start_date', $operator, $date)
+            ->orWhere(fn (Builder $viaDeparture): Builder => $viaDeparture
+                ->whereNull('start_date')
+                ->whereHas('fixedDeparture', fn (Builder $departure): Builder => $departure->whereDate('start_date', $operator, $date))));
     }
 
     public static function getRelations(): array

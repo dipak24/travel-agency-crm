@@ -57,7 +57,7 @@ test('the tenant dashboard renders all the operational widgets', function () {
     app(TenantContext::class)->set($tenant);
     $owner = tdwOwner($tenant);
 
-    $this->actingAs($owner, 'tenant')->get('/tenant')
+    $this->actingAsStaff($owner)->get('/tenant')
         ->assertOk()
         ->assertSee('Bookings this month')
         ->assertSee('Pending invoices')
@@ -73,7 +73,7 @@ test('the reports page renders the revenue, conversion and booking-status widget
     app(TenantContext::class)->set($tenant);
     $owner = tdwOwner($tenant);
 
-    $this->actingAs($owner, 'tenant')->get('/tenant/reports')
+    $this->actingAsStaff($owner)->get('/tenant/reports')
         ->assertOk()
         ->assertSee('Total leads')
         ->assertSee('Conversion rate')
@@ -103,7 +103,7 @@ test('operations overview computes accurate bookings-this-month, pending-invoice
 
     Invoice::query()->create(['customer_id' => $customer->id, 'amount' => 10000, 'total' => 10000, 'currency' => 'USD', 'status' => 'issued']);
 
-    $this->actingAs($owner, 'tenant');
+    $this->actingAsStaff($owner);
     $stats = tdwWidgetData(new OperationsOverview, 'getStats');
 
     expect($stats[0]->getValue())->toBe(3) // bookings this month
@@ -122,7 +122,7 @@ test('leads pipeline groups leads by status in the fixed new/contacted/negotiati
     Lead::query()->create(['status' => 'new']);
     Lead::query()->create(['status' => 'won']);
 
-    $this->actingAs($owner, 'tenant');
+    $this->actingAsStaff($owner);
     $data = tdwWidgetData(new LeadsPipeline, 'getData');
 
     expect($data['labels'])->toBe(['New', 'Contacted', 'Negotiating', 'Won', 'Lost'])
@@ -153,7 +153,7 @@ test('staff performance counts assigned leads, won leads and created bookings pe
         ->and($ownerRow->leads_won_count)->toBe(1)
         ->and($ownerRow->created_bookings_count)->toBe(1);
 
-    $this->actingAs($owner, 'tenant')->get('/tenant')->assertOk()->assertSee($owner->name);
+    $this->actingAsStaff($owner)->get('/tenant')->assertOk()->assertSee($owner->name);
 });
 
 test('lead conversion overview computes the correct conversion rate', function () {
@@ -167,7 +167,7 @@ test('lead conversion overview computes the correct conversion rate', function (
     Lead::query()->create(['status' => 'new']);
     Lead::query()->create(['status' => 'new']);
 
-    $this->actingAs($owner, 'tenant');
+    $this->actingAsStaff($owner);
     $stats = tdwWidgetData(new LeadConversionOverview, 'getStats');
 
     expect($stats[0]->getValue())->toBe(5)
@@ -186,7 +186,7 @@ test('booking status breakdown groups bookings by status in the fixed order', fu
     Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'B', 'status' => 'confirmed']);
     Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'C', 'status' => 'cancelled']);
 
-    $this->actingAs($owner, 'tenant');
+    $this->actingAsStaff($owner);
     $data = tdwWidgetData(new BookingStatusBreakdown, 'getData');
 
     expect($data['labels'])->toBe(['Pending', 'Confirmed', 'Ongoing', 'Completed', 'Cancelled'])
@@ -194,8 +194,10 @@ test('booking status breakdown groups bookings by status in the fixed order', fu
 });
 
 test('the dashboard and reports pages require an authenticated tenant user', function () {
-    $this->get('/tenant')->assertRedirect();
-    $this->get('/tenant/reports')->assertRedirect();
+    $agency = Tenant::query()->create(['name' => 'Northwind Travel', 'slug' => 'northwind']);
+
+    $this->get(portalUrl($agency, '/tenant'))->assertRedirect();
+    $this->get(portalUrl($agency, '/tenant/reports'))->assertRedirect();
 });
 
 test('a staff member without any special permission can still view the dashboard and reports', function () {
@@ -204,6 +206,6 @@ test('a staff member without any special permission can still view the dashboard
     $staff = TenantUser::factory()->create(['tenant_id' => $tenant->id]);
     $staff->assignRole(Role::firstOrCreate(['name' => 'Sales Agent', 'guard_name' => 'tenant', 'team_id' => $tenant->id]));
 
-    $this->actingAs($staff, 'tenant')->get('/tenant')->assertOk();
-    $this->actingAs($staff, 'tenant')->get('/tenant/reports')->assertOk();
+    $this->actingAsStaff($staff)->get('/tenant')->assertOk();
+    $this->actingAsStaff($staff)->get('/tenant/reports')->assertOk();
 });

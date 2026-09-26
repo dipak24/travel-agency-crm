@@ -7,6 +7,7 @@ use App\Notifications\BookingDocumentReviewed;
 use App\Services\Mail\TenantMailer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use LogicException;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
@@ -41,17 +42,23 @@ class BookingDocument extends Model
      * Adds a customer's newly uploaded files to a booking as `pending` documents, one row per file.
      * Unlike syncForBookingDocType() (staff), this only ever adds: a customer can't remove or
      * replace a document staff are reviewing or have already approved. Unknown doc types are
-     * ignored. Returns how many documents were added.
+     * ignored. Pass `$traveler` to file them under one of the booking's travellers (it must belong
+     * to this booking). Returns how many documents were added.
      *
      * @param  array<string, array<int, string>|string|null>  $filePathsByType
      */
-    public static function addCustomerUploads(Booking $booking, array $filePathsByType, string $uploadedBy): int
+    public static function addCustomerUploads(Booking $booking, array $filePathsByType, string $uploadedBy, ?BookingTraveler $traveler = null): int
     {
+        if ($traveler !== null && $traveler->booking_id !== $booking->getKey()) {
+            throw new LogicException('That traveller is not part of this booking.');
+        }
+
         $added = 0;
 
         foreach (array_intersect_key($filePathsByType, self::TYPES) as $docType => $filePaths) {
             foreach (array_filter((array) $filePaths) as $filePath) {
                 $booking->documents()->create([
+                    'booking_traveler_id' => $traveler?->getKey(),
                     'doc_type' => $docType,
                     'file_path' => $filePath,
                     'status' => 'pending',
@@ -78,6 +85,7 @@ class BookingDocument extends Model
     protected $fillable = [
         'tenant_id',
         'booking_id',
+        'booking_traveler_id',
         'doc_type',
         'file_path',
         'status',
@@ -104,6 +112,11 @@ class BookingDocument extends Model
         return $this->belongsTo(Booking::class);
     }
 
+    public function traveler(): BelongsTo
+    {
+        return $this->belongsTo(BookingTraveler::class, 'booking_traveler_id');
+    }
+
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
@@ -117,7 +130,8 @@ class BookingDocument extends Model
      * Reconciles a booking's documents of one doc type against the file paths currently sitting
      * in that doc type's upload field — used by BookingResource's per-type upload fields instead
      * of the old single repeater with a doc-type dropdown. A file removed from the upload widget
-     * removes its row here too; a newly uploaded file becomes a fresh `pending` row.
+     * removes its row here too; a newly uploaded file becomes a fresh `pending` row. Only touches
+     * booking-level documents — per-traveller documents are never in those upload fields.
      *
      * @param  array<int, string>  $filePaths
      */
@@ -125,7 +139,7 @@ class BookingDocument extends Model
     {
         $filePaths = array_values(array_filter($filePaths));
 
-        $existing = $booking->documents()->where('doc_type', $docType)->get();
+        $existing = $booking->documents()->where('doc_type', $docType)->whereNull('booking_traveler_id')->get();
 
         foreach ($existing as $row) {
             if (! in_array($row->file_path, $filePaths, true)) {

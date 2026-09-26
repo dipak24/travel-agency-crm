@@ -35,6 +35,10 @@ class TransactionalEmailTypes
 
     public const CUSTOMER_PASSWORD_RESET = 'customer_password_reset';
 
+    public const CUSTOMER_EMAIL_CHANGE_VERIFY = 'customer_email_change_verify';
+
+    public const CUSTOMER_EMAIL_CHANGE_NOTICE = 'customer_email_change_notice';
+
     /**
      * @return array<string, array{name: string, description: string, subject: string, body: string, merge_tags: list<string>}>
      */
@@ -43,10 +47,10 @@ class TransactionalEmailTypes
         return [
             self::PORTAL_INVITE => [
                 'name' => 'Customer portal invitation',
-                'description' => 'Sent when staff invite a customer to set up their travel portal account.',
+                'description' => 'Sent when staff create a customer or send them a portal setup link. Opening the link verifies their email and activates the account.',
                 'subject' => 'You\'re invited to your {{ tenant_name }} travel portal',
-                'body' => '<p>Hello {{ customer_name }},</p><p>You can now set up your travel portal account to view your bookings, upload documents, and track your invoices.</p><p><a href="{{ action_url }}">Set your password</a></p><p>This link will expire in 60 minutes. If you weren\'t expecting this invitation, you can ignore this email.</p>',
-                'merge_tags' => ['customer_name', 'tenant_name', 'action_url'],
+                'body' => '<p>Hello {{ customer_name }},</p><p>You can now set up your travel portal account to view your bookings, upload documents, and track your invoices.</p><p><a href="{{ action_url }}">Verify your email and set your password</a></p><p>This link will expire in {{ expire_minutes }} minutes and can only be used once. If you weren\'t expecting this invitation, you can ignore this email.</p>',
+                'merge_tags' => ['customer_name', 'tenant_name', 'action_url', 'expire_minutes'],
             ],
             self::BOOKING_STATUS_CHANGED => [
                 'name' => 'Booking status changed',
@@ -124,6 +128,20 @@ class TransactionalEmailTypes
                 'subject' => 'Reset your {{ tenant_name }} travel portal password',
                 'body' => '<p>Hello {{ customer_name }},</p><p>We received a request to reset the password for your {{ tenant_name }} travel portal account.</p><p><a href="{{ reset_url }}">Reset password</a></p><p>This link will expire in {{ expire_minutes }} minutes. If you did not request a password reset, no further action is required.</p>',
                 'merge_tags' => ['customer_name', 'reset_url', 'expire_minutes', 'tenant_name'],
+            ],
+            self::CUSTOMER_EMAIL_CHANGE_VERIFY => [
+                'name' => 'Email change: verify new address',
+                'description' => 'Sent to the new address when a customer (or staff on their behalf) requests an email change. The change only happens once this link is opened.',
+                'subject' => 'Confirm your new email for {{ tenant_name }}',
+                'body' => '<p>Hello {{ customer_name }},</p><p>We received a request to change the email address on your {{ tenant_name }} travel portal account to this address.</p><p><a href="{{ verify_url }}">Confirm new email address</a></p><p>This link will expire in {{ expire_minutes }} minutes. If you did not request this change, you can ignore this email and nothing will change.</p>',
+                'merge_tags' => ['customer_name', 'verify_url', 'expire_minutes', 'tenant_name'],
+            ],
+            self::CUSTOMER_EMAIL_CHANGE_NOTICE => [
+                'name' => 'Email change: notice to current address',
+                'description' => 'Sent to the customer\'s current address when a change to a new email address is requested.',
+                'subject' => 'Email change requested on your {{ tenant_name }} account',
+                'body' => '<p>Hello {{ customer_name }},</p><p>A request was made to change the email address on your {{ tenant_name }} travel portal account to {{ new_email }}. The change only takes effect once the new address is confirmed.</p><p>If you did not request this, please contact us right away.</p>',
+                'merge_tags' => ['customer_name', 'new_email', 'tenant_name'],
             ],
         ];
     }

@@ -16,7 +16,9 @@ class TenantOnboarding
 {
     /**
      * @param  array{name: string, slug: string, billing_email?: ?string, timezone?: string, currency?: string, logo?: ?string, primary_color?: ?string, secondary_color?: ?string}  $tenantData
-     * @param  array{name: string, email: string, password: string}  $ownerData
+     *                                                                                                                                                                                            The owner is created without a password — they choose their own from the setup link the
+     *                                                                                                                                                                                            caller emails them (see AccountSetupLinks::sendStaffLink()).
+     * @param  array{name: string, email: string}  $ownerData
      */
     public function create(array $tenantData, array $ownerData, SubscriptionPlan $plan): Tenant
     {

@@ -146,8 +146,8 @@ test('tenant owner can access the payments resource pages', function () {
     $owner->assignRole($ownerRole);
     app(TenantContext::class)->clear();
 
-    $this->actingAs($owner, 'tenant')->get('/tenant/payments')->assertOk();
-    $this->actingAs($owner, 'tenant')->get('/tenant/payments/create')->assertOk();
+    $this->actingAsStaff($owner)->get('/tenant/payments')->assertOk();
+    $this->actingAsStaff($owner)->get('/tenant/payments/create')->assertOk();
 });
 
 test('recording partial then full payments moves an invoice through issued, partially_paid, and paid', function () {

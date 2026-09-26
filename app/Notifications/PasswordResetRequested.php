@@ -7,8 +7,10 @@ use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Notifications\Concerns\RendersEmailTemplate;
 use App\Services\Mail\TenantMailer;
+use App\Support\AgencySubdomain;
 use App\Support\SystemEmailTypes;
 use App\Support\TransactionalEmailTypes;
+use Filament\Facades\Filament;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -53,14 +55,23 @@ class PasswordResetRequested extends Notification implements ShouldQueue
         $tenantId = $notifiable instanceof Customer || $notifiable instanceof TenantUser ? $notifiable->tenant_id : null;
 
         $mail = match (true) {
+            // Rebuilt with the customer's tenant bound into the signed URL — see
+            // App\Filament\Portal\Pages\Auth\ResetPassword for why an email alone isn't enough.
             $notifiable instanceof Customer => $this->transactionalMail($tenantId, TransactionalEmailTypes::CUSTOMER_PASSWORD_RESET, [
                 'customer_name' => $notifiable->name,
-                'reset_url' => $this->url,
+                'reset_url' => AgencySubdomain::within(
+                    $notifiable->tenant,
+                    fn (): string => Filament::getPanel('portal')->getResetPasswordUrl($this->token, $notifiable, ['tenant' => $tenantId]),
+                ),
                 'expire_minutes' => config('auth.passwords.customers.expire'),
             ]),
+            // Staff sign in on their agency's own subdomain, so the link must point there too.
             $notifiable instanceof TenantUser => $this->systemMail(SystemEmailTypes::STAFF_PASSWORD_RESET, [
                 'user_name' => $notifiable->name,
-                'reset_url' => $this->url,
+                'reset_url' => AgencySubdomain::within(
+                    $notifiable->tenant,
+                    fn (): string => Filament::getPanel('tenant')->getResetPasswordUrl($this->token, $notifiable),
+                ),
                 'expire_minutes' => config('auth.passwords.tenant_users.expire'),
                 'tenant_name' => Tenant::query()->find($tenantId)?->name ?? config('app.name'),
             ]),

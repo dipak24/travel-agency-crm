@@ -59,7 +59,7 @@ test('staff of a suspended tenant cannot access the tenant panel even with an ac
 
     expect($staff->canAccessPanel(filament()->getPanel('tenant')))->toBeFalse();
 
-    $this->actingAs($staff, 'tenant')->get('/tenant')->assertForbidden();
+    $this->actingAsStaff($staff)->get('/tenant')->assertForbidden();
 });
 
 test('seeded admin and portal accounts can authenticate with their documented credentials', function () {
@@ -108,8 +108,8 @@ test('seeded accounts can access their separate Filament panels', function () {
         ->firstOrFail();
 
     $this->actingAs($admin, 'super_admin')->get('/admin')->assertOk();
-    $this->actingAs($staff, 'tenant')->get('/tenant')->assertOk();
-    $this->actingAs($customer, 'customer')->get('/portal')->assertOk();
+    $this->actingAsStaff($staff)->get('/tenant')->assertOk();
+    $this->actingAs($customer, 'customer')->get(portalUrl($customer->tenant))->assertOk();
 });
 
 test('tenant staff can access the services resource', function () {
@@ -119,7 +119,7 @@ test('tenant staff can access the services resource', function () {
         ->where('email', 'staff@example.com')
         ->firstOrFail();
 
-    $this->actingAs($staff, 'tenant')
+    $this->actingAsStaff($staff)
         ->get('/tenant/services')
         ->assertOk();
 });
@@ -143,7 +143,7 @@ test('seeded tenant owner can access CRM resource lists and create pages', funct
         '/tenant/booking-travelers',
         '/tenant/booking-travelers/create',
     ] as $path) {
-        $this->actingAs($staff, 'tenant')
+        $this->actingAsStaff($staff)
             ->get($path)
             ->assertOk();
     }
@@ -161,7 +161,7 @@ test('tenant-owned catalog create pages resolve the authenticated tenant', funct
         '/tenant/fixed-departures/create',
         '/tenant/services/create',
     ] as $path) {
-        $this->actingAs($staff, 'tenant')
+        $this->actingAsStaff($staff)
             ->get($path)
             ->assertOk();
     }

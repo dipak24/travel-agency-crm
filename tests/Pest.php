@@ -1,5 +1,9 @@
 <?php
 
+use App\Models\Tenant;
+use App\Support\AgencySubdomain;
+use Tests\TestCase;
+
 /*
 |--------------------------------------------------------------------------
 | Test Case
@@ -11,7 +15,7 @@
 |
 */
 
-pest()->extend(Tests\TestCase::class)
+pest()->extend(TestCase::class)
  // ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
     ->in('Feature');
 
@@ -44,4 +48,23 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/**
+ * An absolute URL on the agency's own portal subdomain — the customer portal only answers there
+ * (App\Http\Middleware\ResolveAgencySubdomain).
+ */
+function portalUrl(Tenant $tenant, string $path = '/portal'): string
+{
+    return AgencySubdomain::url($tenant, $path);
+}
+
+/**
+ * A named route's URL on the agency's portal subdomain.
+ *
+ * @param  array<string, mixed>  $parameters
+ */
+function portalRoute(Tenant $tenant, string $name, array $parameters = []): string
+{
+    return AgencySubdomain::within($tenant, fn (): string => route($name, $parameters));
 }

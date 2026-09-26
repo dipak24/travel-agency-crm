@@ -5,6 +5,8 @@ namespace App\Filament\Portal\Resources;
 use App\Filament\Portal\Resources\BookingResource\Pages;
 use App\Models\Booking;
 use App\Models\BookingDocument;
+use App\Models\BookingIncludeExclude;
+use App\Models\BookingTraveler;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
@@ -91,31 +93,28 @@ class BookingResource extends Resource
                 ])
                 ->visible(fn (Booking $record): bool => filled($record->booked_itinerary))
                 ->columnSpanFull(),
-            Section::make('What\'s included / excluded')
-                ->schema([
-                    RepeatableEntry::make('includeExcludes')
-                        ->label('')
-                        ->schema([
-                            TextEntry::make('type')->badge(),
-                            TextEntry::make('title'),
-                            TextEntry::make('description'),
-                        ])
-                        ->columns(3)
-                        ->contained(false),
-                ])
-                ->visible(fn (Booking $record): bool => $record->includeExcludes->isNotEmpty())
-                ->columnSpanFull(),
+            static::includeExcludeSection('include', 'What\'s included', 'heroicon-s-check-circle', 'success'),
+            static::includeExcludeSection('exclude', 'What\'s not included', 'heroicon-s-x-circle', 'danger'),
             Section::make('Travelers')
                 ->schema([
                     RepeatableEntry::make('travelers')
                         ->label('')
                         ->schema([
-                            TextEntry::make('name'),
-                            TextEntry::make('dob')->label('Date of birth')->date(),
+                            TextEntry::make('name')->label('Full name')->weight('bold'),
+                            TextEntry::make('email')->placeholder('—'),
+                            TextEntry::make('phone')->placeholder('—'),
+                            TextEntry::make('dob')->label('Date of birth')->date()->placeholder('—'),
+                            TextEntry::make('nationality.nationality')->label('Nationality')->placeholder('—'),
+                            TextEntry::make('address')->placeholder('—'),
                             TextEntry::make('document_status')->badge(),
+                            TextEntry::make('documents_summary')->label('Documents')
+                                ->state(fn (BookingTraveler $record): string => $record->documents->isEmpty()
+                                    ? 'None uploaded yet'
+                                    : $record->documents
+                                        ->map(fn (BookingDocument $document): string => (BookingDocument::TYPES[$document->doc_type] ?? 'Document')." ({$document->status})")
+                                        ->implode(', ')),
                         ])
-                        ->columns(3)
-                        ->contained(false),
+                        ->columns(4),
                 ])
                 ->visible(fn (Booking $record): bool => $record->travelers->isNotEmpty())
                 ->columnSpanFull(),
@@ -158,12 +157,45 @@ class BookingResource extends Resource
     }
 
     /**
-     * One document type's card: its own Upload button, and every file uploaded for that type with
-     * its review status.
+     * The booking's included (green tick) or excluded (red cross) items, each in its own card.
+     *
+     * @param  'include'|'exclude'  $type
+     */
+    private static function includeExcludeSection(string $type, string $heading, string $icon, string $color): Section
+    {
+        $items = fn (Booking $record): Collection => $record->includeExcludes->where('type', $type)->values();
+
+        return Section::make($heading)
+            ->key("include-exclude-{$type}")
+            ->schema([
+                RepeatableEntry::make("include_exclude_{$type}")
+                    ->hiddenLabel()
+                    ->state($items)
+                    ->schema([
+                        TextEntry::make('title')
+                            ->hiddenLabel()
+                            ->icon($icon)
+                            ->iconColor($color)
+                            ->color($type === 'exclude' ? 'danger' : null)
+                            ->weight('medium')
+                            ->helperText(fn (BookingIncludeExclude $record): ?string => $record->description),
+                    ])
+                    ->contained(false),
+            ])
+            ->visible(fn (Booking $record): bool => $items($record)->isNotEmpty())
+            ->columnSpan(1);
+    }
+
+    /**
+     * One document type's card: its own Upload button, and every booking-level file uploaded for
+     * that type with its review status. Per-traveller documents are listed under each traveller.
      */
     public static function documentTypeCard(string $docType, string $label): Section
     {
-        $documentsOfType = fn (Booking $record): Collection => $record->documents->where('doc_type', $docType)->values();
+        $documentsOfType = fn (Booking $record): Collection => $record->documents
+            ->where('doc_type', $docType)
+            ->whereNull('booking_traveler_id')
+            ->values();
 
         return Section::make($label)
             ->key("documents-{$docType}")
