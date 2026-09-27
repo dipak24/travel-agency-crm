@@ -31,7 +31,13 @@ trait PresentsActivityLog
         Customer::class => 'Customer',
     ];
 
-    public const EVENTS = ['created' => 'Created', 'updated' => 'Updated', 'deleted' => 'Deleted'];
+    public const EVENTS = [
+        'created' => 'Created',
+        'updated' => 'Updated',
+        'deleted' => 'Deleted',
+        'impersonation_started' => 'Impersonation started',
+        'impersonation_ended' => 'Impersonation ended',
+    ];
 
     /**
      * @var array<string, ?string>
@@ -53,6 +59,7 @@ trait PresentsActivityLog
                     ->color(fn (?string $state): string => match ($state) {
                         'created' => 'success',
                         'deleted' => 'danger',
+                        'impersonation_started', 'impersonation_ended' => 'warning',
                         default => 'info',
                     }),
                 TextColumn::make('subject_type')

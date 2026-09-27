@@ -2,9 +2,11 @@
 
 namespace App\Filament\Tenant\Resources;
 
+use App\Filament\Concerns\RequiresPlanFeature;
 use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Tenant\Resources\GiftVoucherResource\Pages;
 use App\Models\GiftVoucher;
+use App\Support\PlanFeatures;
 use BackedEnum;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\DeleteAction;
@@ -28,6 +30,8 @@ use UnitEnum;
  */
 class GiftVoucherResource extends Resource
 {
+    use RequiresPlanFeature;
+
     protected static ?string $model = GiftVoucher::class;
 
     protected static ?string $navigationLabel = 'Gift Vouchers';
@@ -128,5 +132,10 @@ class GiftVoucherResource extends Resource
             'index' => Pages\ListGiftVouchers::route('/'),
             'edit' => Pages\EditGiftVoucher::route('/{record}/edit'),
         ];
+    }
+
+    protected static function planFeature(): string
+    {
+        return PlanFeatures::GIFT_VOUCHERS;
     }
 }

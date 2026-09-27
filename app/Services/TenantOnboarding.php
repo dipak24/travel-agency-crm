@@ -47,6 +47,7 @@ class TenantOnboarding
                     'plan_id' => $plan->getKey(),
                     'status' => 'trialing',
                     'starts_at' => now(),
+                    'next_billing_at' => SubscriptionBilling::firstBillingDate($tenant),
                 ]);
 
                 app(EmailTemplates::class)->seedTenantTemplates($tenant);

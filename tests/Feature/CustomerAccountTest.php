@@ -9,6 +9,7 @@ use App\Filament\Tenant\Resources\CustomerResource\Pages\EditCustomer;
 use App\Filament\Tenant\Resources\CustomerResource\Pages\ListCustomers;
 use App\Filament\Tenant\Resources\StaffResource\Pages\CreateStaff;
 use App\Models\Activity;
+use App\Models\Booking;
 use App\Models\Country;
 use App\Models\Customer;
 use App\Models\Tenant;
@@ -271,6 +272,34 @@ test('clicking a customer row opens the view page, which other tenants cannot op
 
     $this->actingAsStaff($outsider)->get(CustomerResource::getUrl('view', ['record' => $customer]))
         ->assertNotFound();
+});
+
+test('the view page groups the customer into side tabs and lists only their own bookings', function () {
+    $owner = customerAccountOwner();
+    $customer = Customer::factory()->create(['name' => 'Tabbed Customer']);
+    $otherCustomer = Customer::factory()->create();
+
+    Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Everest Base Camp', 'start_date' => '2026-10-01', 'end_date' => '2026-10-14', 'status' => 'confirmed', 'total_amount' => 150000]);
+    Booking::query()->create(['customer_id' => $otherCustomer->id, 'trip_name' => 'Annapurna Circuit']);
+
+    $this->actingAsStaff($owner)->get(CustomerResource::getUrl('view', ['record' => $customer]))
+        ->assertOk()
+        ->assertSeeInOrder(['Profile details', 'Contact', 'Travel preferences', 'Booking history', 'Special dates', 'Account &amp; access', 'Notes'], escape: false)
+        ->assertSee('Everest Base Camp')
+        ->assertSee('Oct 1 – Oct 14, 2026')
+        ->assertDontSee('Annapurna Circuit');
+});
+
+test('the edit page keeps every customer field reachable through its side tabs', function () {
+    $owner = customerAccountOwner();
+    $customer = Customer::factory()->create();
+
+    Livewire::actingAs($owner, 'tenant')->test(EditCustomer::class, ['record' => $customer->getKey()])
+        ->assertFormFieldExists('date_of_birth')
+        ->assertFormFieldExists('emergency_contact_phone')
+        ->assertFormFieldExists('travel_interests')
+        ->assertFormFieldExists('specialDates')
+        ->assertFormFieldExists('notes');
 });
 
 test('new staff are emailed a setup link instead of being given a password', function () {

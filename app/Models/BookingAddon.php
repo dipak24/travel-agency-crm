@@ -12,10 +12,17 @@ class BookingAddon extends Model
 {
     use BelongsToTenant, LogsActivity;
 
+    /**
+     * Add-ons only count toward the booking total once staff approve them: a customer's portal
+     * request doesn't change the price until then.
+     */
+    public const BILLABLE_STATUSES = ['approved', 'booked'];
+
     protected $fillable = [
         'tenant_id',
         'booking_id',
         'service_id',
+        'unit_price',
         'price',
         'quantity',
         'status',
@@ -25,6 +32,7 @@ class BookingAddon extends Model
     protected function casts(): array
     {
         return [
+            'unit_price' => 'integer',
             'price' => 'integer',
             'quantity' => 'integer',
         ];

@@ -3,10 +3,12 @@
 namespace App\Filament\Tenant\Resources;
 
 use App\Filament\Concerns\ConfiguresEmailCampaigns;
+use App\Filament\Concerns\RequiresPlanFeature;
 use App\Filament\Tenant\Resources\EmailCampaignResource\Pages;
 use App\Models\EmailCampaign;
 use App\Models\EmailTemplate;
 use App\Services\Mail\CampaignSender;
+use App\Support\PlanFeatures;
 use BackedEnum;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Select;
@@ -24,7 +26,7 @@ use UnitEnum;
  */
 class EmailCampaignResource extends Resource
 {
-    use ConfiguresEmailCampaigns;
+    use ConfiguresEmailCampaigns, RequiresPlanFeature;
 
     protected static ?string $model = EmailCampaign::class;
 
@@ -97,5 +99,10 @@ class EmailCampaignResource extends Resource
             'create' => Pages\CreateEmailCampaign::route('/create'),
             'edit' => Pages\EditEmailCampaign::route('/{record}/edit'),
         ];
+    }
+
+    protected static function planFeature(): string
+    {
+        return PlanFeatures::EMAIL_CAMPAIGNS;
     }
 }

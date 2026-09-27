@@ -43,6 +43,7 @@ class PackageController extends Controller
                 ->with(['fixedDepartures' => fn ($query) => $query
                     ->whereIn('id', $this->publicInquiry->publicDepartures()->select('id'))
                     ->orderBy('start_date'),
+                    'includeExcludeItems.includeExclude',
                 ])
                 ->first();
 

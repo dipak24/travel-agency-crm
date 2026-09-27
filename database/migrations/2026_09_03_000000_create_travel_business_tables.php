@@ -39,8 +39,19 @@ return new class extends Migration
             $table->date('start_date')->nullable();
             $table->date('end_date')->nullable();
             $table->unsignedInteger('pax_count')->default(1);
+            $table->string('booking_type')->default('individual');
+            $table->unsignedSmallInteger('duration_days')->nullable();
             $table->string('status')->default('pending');
+            $table->unsignedInteger('per_person_price')->default(0);
+            $table->unsignedBigInteger('base_amount')->default(0);
+            $table->foreignId('group_discount_tier_id')->nullable()->constrained()->nullOnDelete();
+            $table->unsignedBigInteger('group_discount_amount')->default(0);
+            $table->bigInteger('inclusions_adjustment')->default(0);
+            $table->unsignedBigInteger('addons_amount')->default(0);
+            $table->bigInteger('manual_adjustment')->default(0);
+            $table->string('manual_adjustment_reason')->nullable();
             $table->unsignedBigInteger('total_amount')->default(0);
+            $table->jsonb('document_requirements')->nullable();
             $table->foreignId('created_by_staff_id')->nullable()->constrained('tenant_users')->nullOnDelete();
             $table->text('customer_notes')->nullable();
             $table->timestamps();
@@ -87,9 +98,34 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->unsignedBigInteger('price')->default(0);
             $table->string('currency', 3)->default('USD');
+            $table->string('pricing_unit')->default('per_trip');
+            $table->string('category')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             $table->index(['tenant_id', 'is_active']);
+        });
+
+        Schema::create('package_service', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('package_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('service_id')->constrained()->cascadeOnDelete();
+            $table->unsignedBigInteger('price_override')->nullable();
+            $table->boolean('is_featured')->default(false);
+            $table->timestamps();
+            $table->unique(['package_id', 'service_id']);
+        });
+
+        Schema::create('package_include_exclude', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('package_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('include_exclude_id')->constrained()->cascadeOnDelete();
+            $table->boolean('is_included')->default(true);
+            $table->unsignedInteger('unit_price_override')->nullable();
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->timestamps();
+            $table->unique(['package_id', 'include_exclude_id']);
         });
 
         Schema::create('booking_addons', function (Blueprint $table): void {
@@ -97,6 +133,7 @@ return new class extends Migration
             $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
             $table->foreignId('booking_id')->constrained()->cascadeOnDelete();
             $table->foreignId('service_id')->constrained()->restrictOnDelete();
+            $table->unsignedBigInteger('unit_price')->default(0);
             $table->unsignedBigInteger('price')->default(0);
             $table->unsignedInteger('quantity')->default(1);
             $table->string('status')->default('requested');
@@ -113,6 +150,12 @@ return new class extends Migration
             $table->string('type');
             $table->string('title');
             $table->text('description')->nullable();
+            $table->unsignedInteger('unit_price')->default(0);
+            $table->string('pricing_unit')->default('per_person');
+            $table->unsignedInteger('units')->default(1);
+            $table->unsignedBigInteger('line_total')->default(0);
+            $table->boolean('default_included')->nullable();
+            $table->boolean('is_custom')->default(false);
             $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();
             $table->index(['tenant_id', 'booking_id', 'type']);
@@ -193,12 +236,13 @@ return new class extends Migration
 
         Schema::create('public_lead_pages', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('tenant_id')->unique()->constrained()->cascadeOnDelete();
             $table->string('custom_domain')->nullable()->unique();
-            $table->string('slug')->unique();
-            $table->json('theme')->nullable();
-            $table->json('contact_settings')->nullable();
-            $table->boolean('is_active')->default(true);
+            $table->string('domain_verification_token', 64)->nullable();
+            $table->timestamp('domain_verified_at')->nullable();
+            $table->jsonb('theme')->nullable();
+            $table->jsonb('contact_settings')->nullable();
+            $table->boolean('is_active')->default(false);
             $table->timestamps();
         });
 
@@ -392,6 +436,8 @@ return new class extends Migration
         Schema::dropIfExists('booking_waitlist');
         Schema::dropIfExists('booking_include_exclude');
         Schema::dropIfExists('booking_addons');
+        Schema::dropIfExists('package_include_exclude');
+        Schema::dropIfExists('package_service');
         Schema::dropIfExists('package_promo_code');
         Schema::dropIfExists('services');
         Schema::dropIfExists('booking_documents');

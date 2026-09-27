@@ -83,7 +83,7 @@ test('editing that invoice shows the dollar amount back, not raw cents', functio
         ->assertSet('data.total', 100.0);
 });
 
-test('a booking\'s total amount round-trips through dollars in the create form', function () {
+test('a booking\'s per-person price round-trips through dollars in the create form', function () {
     $tenant = micTenant('Northwind Travel', 'northwind-travel');
     app(TenantContext::class)->set($tenant);
     $owner = micOwner($tenant);
@@ -94,14 +94,17 @@ test('a booking\'s total amount round-trips through dollars in the create form',
     Livewire::actingAs($owner, 'tenant')->test(CreateBooking::class)
         ->set('data.customer_id', $customer->id)
         ->set('data.trip_name', 'Alps Trek')
-        ->set('data.total_amount', '250.50')
+        ->set('data.start_date', now()->addMonth()->toDateString())
+        ->set('data.duration_days', 5)
+        ->set('data.per_person_price', '250.50')
         ->set('data.status', 'confirmed')
         ->call('create')
         ->assertHasNoFormErrors();
 
     $booking = Booking::query()->where('trip_name', 'Alps Trek')->firstOrFail();
 
-    expect($booking->total_amount)->toBe(25050);
+    expect($booking->per_person_price)->toBe(25050)
+        ->and($booking->total_amount)->toBe(25050);
 });
 
 test('recording a payment with a dollar amount stores cents', function () {

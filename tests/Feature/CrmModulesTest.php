@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\BookingType;
 use App\Filament\Tenant\Resources\BookingResource\Pages\CreateBooking;
 use App\Filament\Tenant\Resources\BookingResource\Pages\EditBooking;
 use App\Filament\Tenant\Resources\BookingResource\Pages\ListBookings;
@@ -107,6 +108,8 @@ test('a tenant staff member can create a booking for a brand-new guest customer 
         ->and((int) $test->get('data.customer_id'))->toBe($guest->id);
 
     $test->set('data.trip_name', 'Guest Getaway')
+        ->set('data.start_date', now()->addMonth()->toDateString())
+        ->set('data.duration_days', 5)
         ->set('data.status', 'pending')
         ->call('create')
         ->assertHasNoFormErrors();
@@ -130,6 +133,8 @@ test('a sales agent, not just the tenant owner, can create a booking directly', 
         ->assertOk()
         ->set('data.customer_id', $customer->id)
         ->set('data.trip_name', 'Direct Sale Trip')
+        ->set('data.start_date', now()->addMonth()->toDateString())
+        ->set('data.duration_days', 5)
         ->set('data.status', 'pending')
         ->call('create')
         ->assertHasNoFormErrors();
@@ -229,7 +234,9 @@ test('a lead converts to a booking and reserves fixed departure capacity', funct
     expect($booking->lead_id)->toBe($lead->id)
         ->and($booking->customer_id)->toBe($customer->id)
         ->and($booking->booked_itinerary)->toContain('Arrival')->toContain('Welcome')
-        ->and($booking->total_amount)->toBe(125000);
+        ->and($booking->booking_type)->toBe(BookingType::FixedGroup)
+        ->and($booking->per_person_price)->toBe(125000)
+        ->and($booking->total_amount)->toBe(250000);
     expect($departure->fresh()->booked_slots)->toBe(2);
     expect($lead->fresh()->status)->toBe('won');
 });

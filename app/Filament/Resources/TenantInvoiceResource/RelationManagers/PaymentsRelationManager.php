@@ -5,6 +5,7 @@ namespace App\Filament\Resources\TenantInvoiceResource\RelationManagers;
 use App\Filament\Forms\Components\MoneyInput;
 use App\Models\TenantInvoice;
 use App\Models\TenantPayment;
+use App\Support\Currencies;
 use App\Support\TenantContext;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -32,10 +33,7 @@ class PaymentsRelationManager extends RelationManager
                 ->label('Amount')
                 ->minValue(0)->required()
                 ->default(fn (Get $get): int => $this->getOwnerRecord()->balanceDue()),
-            Select::make('currency')->options([
-                'USD' => 'USD', 'EUR' => 'EUR', 'GBP' => 'GBP', 'AUD' => 'AUD',
-                'CAD' => 'CAD', 'AED' => 'AED', 'INR' => 'INR', 'NPR' => 'NPR', 'JPY' => 'JPY',
-            ])->required()->default(fn (): string => $this->getOwnerRecord()->currency),
+            Select::make('currency')->options(fn (): array => Currencies::options($this->getOwnerRecord()->currency))->required()->default(fn (): string => $this->getOwnerRecord()->currency),
             Select::make('method')->options([
                 'bank_transfer' => 'Bank transfer',
                 'card' => 'Card',

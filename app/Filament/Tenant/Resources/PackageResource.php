@@ -2,14 +2,21 @@
 
 namespace App\Filament\Tenant\Resources;
 
+use App\Enums\DocumentType;
+use App\Enums\PackageCategory;
 use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Tenant\Resources\PackageResource\Pages;
+use App\Filament\Tenant\Resources\PackageResource\RelationManagers\DiscountTiersRelationManager;
+use App\Filament\Tenant\Resources\PackageResource\RelationManagers\FixedDeparturesRelationManager;
+use App\Filament\Tenant\Resources\PackageResource\RelationManagers\IncludeExcludeItemsRelationManager;
+use App\Filament\Tenant\Resources\PackageResource\RelationManagers\ServicesRelationManager;
 use App\Models\Package;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -18,11 +25,14 @@ use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Support\Str;
 use UnitEnum;
 
 class PackageResource extends Resource
@@ -45,7 +55,13 @@ class PackageResource extends Resource
                     ->schema([
                         TextInput::make('name')
                             ->required()
-                            ->maxLength(255),
+                            ->maxLength(255)
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (Get $get, Set $set, ?string $state): void {
+                                if (blank($get('slug'))) {
+                                    $set('slug', Str::slug((string) $state));
+                                }
+                            }),
                         TextInput::make('package_code')
                             ->label('Package code')
                             ->required()
@@ -53,7 +69,11 @@ class PackageResource extends Resource
                         TextInput::make('slug')
                             ->required()
                             ->maxLength(255)
-                            ->helperText('Use a URL-friendly value. It must be unique within this agency.'),
+                            ->helperText('Filled from the name. It must be unique within this agency.'),
+                        Select::make('category')
+                            ->options(PackageCategory::class)
+                            ->default(PackageCategory::Trek->value)
+                            ->required(),
                         TextInput::make('duration_days')
                             ->label('Duration (days)')
                             ->required()
@@ -61,13 +81,22 @@ class PackageResource extends Resource
                             ->minValue(1)
                             ->integer(),
                         MoneyInput::make('base_price')
-                            ->label('Base price')
+                            ->label('Cost price per person')
+                            ->helperText('Internal cost, not shown to customers.')
                             ->required()
                             ->minValue(0),
                         MoneyInput::make('sales_price')
-                            ->label('Sales price')
+                            ->label('Price per person')
+                            ->helperText('Covers every item marked "included in the price".')
                             ->required()
                             ->minValue(0),
+                        TextInput::make('min_pax')
+                            ->label('Minimum travellers')
+                            ->numeric()->integer()->minValue(1)->default(1)->required(),
+                        TextInput::make('max_pax')
+                            ->label('Maximum travellers')
+                            ->numeric()->integer()->minValue(1)
+                            ->gte('min_pax'),
                         Select::make('status')
                             ->options([
                                 'draft' => 'Draft',
@@ -82,6 +111,19 @@ class PackageResource extends Resource
                         Textarea::make('description')
                             ->columnSpanFull()
                             ->rows(4),
+                        CheckboxList::make('document_requirements')
+                            ->label('Required travel documents')
+                            ->helperText('Customers are asked to upload these. Unticked types are optional; "Other documents" is always optional. CST can change this per booking.')
+                            ->options(collect(DocumentType::requirable())->mapWithKeys(fn (DocumentType $type): array => [$type->value => $type->getLabel()])->all())
+                            ->afterStateHydrated(function (CheckboxList $component, ?Package $record): void {
+                                $requirements = $record?->documentRequirements() ?? DocumentType::defaultRequirements();
+                                $component->state(array_keys(array_filter($requirements)));
+                            })
+                            ->dehydrateStateUsing(fn (?array $state): array => collect(DocumentType::cases())
+                                ->mapWithKeys(fn (DocumentType $type): array => [$type->value => in_array($type->value, $state ?? [], true)])
+                                ->all())
+                            ->columns(4)
+                            ->columnSpanFull(),
                         Repeater::make('itinerary')
                             ->label('Itinerary')
                             ->schema([
@@ -166,6 +208,16 @@ class PackageResource extends Resource
 
             $action->cancel();
         }
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            IncludeExcludeItemsRelationManager::class,
+            FixedDeparturesRelationManager::class,
+            ServicesRelationManager::class,
+            DiscountTiersRelationManager::class,
+        ];
     }
 
     public static function getPages(): array

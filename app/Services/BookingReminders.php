@@ -117,7 +117,7 @@ class BookingReminders
             ->whereNotNull('customer_id')
             ->whereDate('start_date', '>', $today)
             ->whereDate('start_date', '<=', $today->copy()->addDays($furthestRule))
-            ->with(['customer', 'travelers', 'documents', 'invoices'])
+            ->with(['customer', 'travelers', 'documents', 'invoices', 'package'])
             ->each(function (Booking $booking) use ($settings, $today, &$sent): void {
                 $daysUntil = (int) $today->diffInDays($booking->start_date);
 
@@ -138,10 +138,11 @@ class BookingReminders
     private function isOutstanding(string $type, Booking $booking): bool
     {
         return match ($type) {
-            self::DOCUMENTS => $booking->documents->isEmpty()
-                || $booking->documents->groupBy('doc_type')->contains(
-                    fn ($documentsOfType): bool => $documentsOfType->every(fn (BookingDocument $document): bool => $document->status === 'rejected'),
+            self::DOCUMENTS => collect($booking->requiredDocumentTypes())->contains(
+                fn (string $docType): bool => ! $booking->documents->contains(
+                    fn (BookingDocument $document): bool => $document->doc_type === $docType && $document->status !== 'rejected',
                 ),
+            ),
             self::TRAVELER_INFO => $booking->travelers->count() < $booking->pax_count
                 || $booking->travelers->contains(
                     fn (BookingTraveler $traveler): bool => $traveler->dob === null || blank($traveler->passport_no),

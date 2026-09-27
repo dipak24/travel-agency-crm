@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use App\Services\PublicCatalogCache;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,7 +12,7 @@ use LogicException;
 
 class FixedDeparture extends Model
 {
-    use BelongsToTenant;
+    use BelongsToTenant, HasFactory;
 
     protected static function booted(): void
     {
@@ -52,6 +53,19 @@ class FixedDeparture extends Model
     public function package(): BelongsTo
     {
         return $this->belongsTo(Package::class);
+    }
+
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(Booking::class);
+    }
+
+    /**
+     * The per-person price for this departure: its own override, else the package's price.
+     */
+    public function perPersonPrice(): int
+    {
+        return $this->price_override ?? $this->package?->sales_price ?? 0;
     }
 
     public function waitlistEntries(): HasMany

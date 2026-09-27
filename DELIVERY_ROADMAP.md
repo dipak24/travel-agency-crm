@@ -55,11 +55,8 @@ in as each phase starts.
      on `tenants` but had no form, gated by a new `manage settings` tenant
      permission (Tenant Owner by default). Covered by
      `AdminTenantManagementTest` and `TenantSettingsTest`.
-   - Deferred: Impersonate tenant admin (+ start/end audit log + UI banner) —
-     this needs its own guard-switching mechanism and depends on the Phase 12
-     audit log work, which doesn't exist yet. It was only ever in the exhaustive
-     granular checklist below, not this phase's "Remaining" scope, so it's
-     tracked there as a standalone open item rather than blocking this phase.
+   - Done (2026-09-27): Impersonate tenant staff (+ start/end audit log + UI
+     banner) — see the Tenant Management checklist below.
 
 4. **Phase 4 — Tenant Admin Panel.** Tenant-side staff management and tenant
    dashboard shell. **Completed** — `Staff` resource, tenant `Role` resource,
@@ -221,9 +218,9 @@ in as each phase starts.
    resolution (subdomain or `?tenant=slug`), published package/departure
    read-only API endpoints, public inquiry form → auto-creates a Lead,
    self-service waitlist entry on full fixed departures, IP rate limiting, Redis
-   caching. **API completed (2026-09-25)** — the public website/landing-page
-   config (themes, custom domains + DNS TXT verification) is still not built,
-   per the "API only" scope above.
+   caching. **API completed (2026-09-25)**; the public website/landing-page
+   config (themes, custom domains + DNS TXT verification, `GET /api/v1/site`)
+   followed on 2026-09-27 — see the Tenant Panel checklist below.
    - Done: a versioned, unauthenticated JSON API in `routes/api.php` (`/api/v1`,
      registered via `withRouting(api: ...)` — no Sanctum, nothing here needs
      tokens). `App\Http\Middleware\ResolvePublicTenant` resolves the tenant from
@@ -822,7 +819,11 @@ in as each phase starts.
     monitoring/backups/CI-CD, load testing on the Phase 8 public API. **Not
     started as a formal pass**, though several individual items are already done
     incrementally (tenant-isolation tests, encrypted PII, private document
-    storage, per-model Policies).
+    storage, per-model Policies, DNS TXT verification of custom domains,
+    recurring subscription invoicing and plan feature toggles — all
+    2026-09-27). Still open: 2FA, S3/signed URLs, numeric `feature_limits`
+    enforcement, dunning/suspension on non-payment, monitoring/backups/CI-CD,
+    load testing.
 
 ---
 
@@ -887,7 +888,7 @@ it as a to-check/to-build item either way.
 
 ### Admin Panel (`/admin`, guard: `super_admin`)
 
-**Tenant Management** — built (impersonation deferred, see Phase 3 note above)
+**Tenant Management** — built
 
 - [x] Create tenant
 - [x] List tenants
@@ -896,7 +897,21 @@ it as a to-check/to-build item either way.
 - [x] Suspend / reactivate tenant
 - [x] Assign subscription plan
 - [x] Set trial period
-- [ ] Impersonate tenant admin (+ start/end audit log + UI banner)
+- [x] Impersonate tenant admin (+ start/end audit log + UI banner) — built
+      2026-09-27. **Impersonate** row action on `TenantResource` (gated like
+      the other tenant actions, hidden for suspended/deleted tenants; picks a
+      staff account, defaulting to the owner). Staff sessions live on the
+      agency subdomain, so `App\Services\Auth\TenantImpersonation` issues a
+      single-use cache token (60 s) behind a temporary signed URL on
+      `{slug}.{agency.domain}/impersonate/{token}`; redeeming it signs the
+      staff member in there and keeps the admin in the session. The staff
+      panel shows an "on behalf of platform admin …" banner with **End
+      impersonation** (`POST /impersonate/leave`, back to `/admin/tenants`).
+      Audit log events `impersonation_started` / `impersonation_ended`, caused
+      by the Super Admin, performed on the staff account. Fixed along the way:
+      the app's `CauserResolver::resolveUsing()` closure ignored explicit
+      `->causedBy($model)` calls app-wide. Covered by
+      `TenantImpersonationTest`.
 - [x] Delete (soft-delete) tenant
 
 **Super Admin User Management** — built
@@ -943,13 +958,20 @@ it as a to-check/to-build item either way.
 - [x] Invoice status auto-transitions (issued → partially_paid → paid) from the
       payment ledger
 - [x] PDF export
-- [ ] Automatic recurring invoice generation from
-      `tenant_subscriptions.
-      next_billing_at` — still the open Phase 13
-      "subscription billing activation" item; this phase only adds manual
-      invoicing and the schema (`tenant_subscription_id` link,
-      `period_start`/`period_end` on line items) a future scheduled job would
-      need
+- [x] Automatic recurring invoice generation from
+      `tenant_subscriptions.next_billing_at` — built 2026-09-27.
+      `app:bill-subscriptions` (daily 02:00, `App\Services\SubscriptionBilling`)
+      raises one `issued` invoice per billing period (a `subscription` line
+      item with `period_start`/`period_end`, due in 14 days, USD like plan
+      prices) and advances `next_billing_at` by the plan's cycle. The
+      subscription row is locked while billed (no double billing); missed
+      periods are caught up (max 12 per run); free plans only advance the date;
+      cancelled/ended subscriptions and suspended tenants are skipped. New
+      subscriptions now get `next_billing_at` = trial end or now; existing ones
+      without it are initialised the same way on the next run (never
+      back-billed). Not built: dunning — moving unpaid subscriptions to
+      `past_due`, reminders, or suspending on non-payment. Covered by
+      `SubscriptionBillingTest`.
 
 **Dashboard** — built as widgets on the existing default Filament Dashboard
 (`App\Filament\Widgets\*`, auto-discovered by `AdminPanelProvider`), gated by
@@ -991,9 +1013,28 @@ new "Marketing" nav group gated by `manage marketing`
       (platform-wide SMTP, `platform_mail_settings`, gated by `manage
       platform`); see the Phase 11 note above. SMS provider config not built
       (no SMS sending exists anywhere in the app yet).
-- [ ] Default currency list
-- [ ] Plan/feature toggles
-- [ ] Maintenance mode
+- [x] Default currency list — built 2026-09-27, admin **Platform → System
+      Settings** (`App\Filament\Pages\SystemSettings`, single-row
+      `platform_settings`, gated by `manage platform`). Pick the enabled
+      currencies from `App\Support\Currencies::ALL` plus the default for new
+      tenants. Every currency select (tenant create/edit, tenant Settings,
+      platform invoices/payments) uses `Currencies::options()`, which always
+      keeps a record's current currency so disabling one never breaks saves.
+- [x] Plan/feature toggles — built 2026-09-27 as a **Features** section on each
+      plan (`subscription_plans.features`, `App\Support\PlanFeatures`):
+      customer portal, public website API, online payments (PayPal/HBL; Pay
+      later stays), email campaigns, gift vouchers, promo codes, reports.
+      Enforced in `Customer::canAccessPanel()`, `ResolvePublicTenant` (404),
+      the card gateways' `isEnabledFor()`, and via the `RequiresPlanFeature`
+      trait on the matching staff/portal resources and pages. A plan saved
+      before toggles existed (null) or a tenant with no subscription allows
+      everything. Numeric `feature_limits` (e.g. `max_staff`) are still not
+      enforced — see Phase 13.
+- [x] Maintenance mode — built 2026-09-27 on the same page, with a custom
+      message. `EnsurePlatformAvailable` answers the staff panel, customer
+      portal, payment pages and `/api/v1` with a 503 (JSON for the API); the
+      admin panel and payment webhooks keep working. Covered by
+      `SystemSettingsTest` and `PlanFeaturesTest`.
 
 **Audit Log Viewer**
 
@@ -1202,12 +1243,28 @@ standalone module
 - [x] Approve document — `status` field in the repeater
 - [x] Reject document — `status` field + `rejection_reason` in the repeater
 
-**Public Booking Website / Landing Page config** — not started
+**Public Booking Website / Landing Page config** — built 2026-09-27 as tenant
+**Website** page (`App\Filament\Tenant\Pages\WebsiteSettings`, `/tenant/website`,
+gated by `manage settings`) on the existing `public_lead_pages` table (one row
+per tenant, `PublicLeadPage` model). This configures the site; a front end
+reads it from the public API — no server-rendered website is built here.
 
-- [ ] Pick theme
-- [ ] Set custom domain / slug
-- [ ] DNS TXT record verification before activation
-- [ ] Contact settings / branding
+- [x] Pick theme — classic / modern / minimal, accent colour, headline, tagline
+- [x] Set custom domain / slug — the slug stays the agency subdomain, set by the
+      Super Admin (renaming breaks links, see `.ai/rules/filament-resources.md`);
+      the `slug` column on `public_lead_pages` was dropped. Custom domain is
+      validated (bare domain, not under the platform domain, unique).
+- [x] DNS TXT record verification before activation — TXT
+      `_travelcrm-verification.{domain}` = `travelcrm-site-verification={token}`,
+      checked by **Verify domain** (`CustomDomainVerifier`). Changing the domain
+      resets verification. `ResolvePublicTenant` serves a custom domain only once
+      verified and published.
+- [x] Contact settings / branding — email, phone, WhatsApp, address, social
+      links; logo/name/colours come from the agency branding. New endpoint
+      `GET /api/v1/site` returns branding, theme and contact (404 until the site
+      is published), cached and flushed like the rest of the public API.
+      Covered by `WebsiteSettingsTest`. Deployment still needs the web server/TLS
+      to accept verified custom domains (e.g. on-demand certificates).
 
 **Email Template Builder & Mass Emailing (tenant)** — built (Phase 11), under a
 new "Communication" nav group gated by `manage communications`

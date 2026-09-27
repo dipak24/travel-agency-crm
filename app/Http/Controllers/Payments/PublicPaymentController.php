@@ -10,6 +10,8 @@ use App\Support\TenantContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 
 /**
@@ -23,15 +25,24 @@ class PublicPaymentController extends Controller
 {
     use HandlesGatewayCheckout;
 
-    public function show(int $invoice): View
+    public function show(Request $request, int $invoice): View
     {
         $invoiceModel = $this->findInvoice($invoice);
 
-        return app(TenantContext::class)->wrap($invoiceModel->tenant, function () use ($invoiceModel): View {
-            $invoiceModel->loadMissing(['tenant', 'customer']);
+        return app(TenantContext::class)->wrap($invoiceModel->tenant, function () use ($request, $invoiceModel): View {
+            $invoiceModel->loadMissing(['tenant', 'customer', 'items', 'booking.package', 'booking.fixedDeparture']);
+            $tenant = $invoiceModel->tenant;
 
             return view('payments.public-show', [
                 'invoice' => $invoiceModel,
+                'tenant' => $tenant,
+                'booking' => $invoiceModel->booking,
+                'logoUrl' => filled($tenant?->logo) ? Storage::disk('public')->url($tenant->logo) : null,
+                'accentColor' => preg_match('/^#[0-9a-fA-F]{3,8}$/', (string) $tenant?->primary_color) ? $tenant->primary_color : '#111827',
+                'payments' => $invoiceModel->payments()->where('status', 'completed')->oldest('paid_at')->get(),
+                'paidAmount' => $invoiceModel->paidAmount(),
+                'balanceDue' => $invoiceModel->balanceDue(),
+                'linkExpiresAt' => $request->filled('expires') ? Carbon::createFromTimestamp((int) $request->query('expires'), $tenant?->timezone ?: config('app.timezone')) : null,
                 'gateways' => app(PaymentGatewayResolver::class)->enabledFor($invoiceModel),
             ]);
         });

@@ -8,7 +8,9 @@ use App\Models\SubscriptionPlan;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Services\Auth\AccountSetupLinks;
+use App\Services\Auth\TenantImpersonation;
 use App\Support\AgencySubdomain;
+use App\Support\Currencies;
 use BackedEnum;
 use DateTimeZone;
 use Filament\Actions\Action;
@@ -109,6 +111,7 @@ class TenantResource extends Resource
                         // No SVG for either upload: an SVG served from the public disk can carry script.
                         FileUpload::make('logo')
                             ->image()
+                            ->helperText('Any shape works — horizontal or vertical. The logo is shown at the exact size you upload, never cropped, so upload it at the size you want it to appear (for example 200×50 px for the header). PNG with a transparent background looks best. Max 2 MB. Without a logo, the business name is shown.')
                             ->disk('public')
                             ->directory('tenant-logos')
                             ->visibility('public')
@@ -117,7 +120,7 @@ class TenantResource extends Resource
                             ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp']),
                         FileUpload::make('favicon')
                             ->label('Favicon')
-                            ->helperText('The small icon in the browser tab. A square PNG or ICO, at least 32×32 pixels, max 512 KB.')
+                            ->helperText('The small icon in the browser tab. A square PNG or ICO works best (for example 32×32 or 512×512 px). Max 512 KB.')
                             ->disk('public')
                             ->directory('tenant-favicons')
                             ->visibility('public')
@@ -134,7 +137,7 @@ class TenantResource extends Resource
                             ->rules(fn (?Tenant $record): array => [
                                 Rule::unique('tenants', 'billing_email')->ignore($record?->getKey()),
                             ]),
-                        Select::make('currency')->searchable()->options(self::currencyOptions())->required()->default('USD'),
+                        Select::make('currency')->searchable()->options(fn (?Tenant $record): array => Currencies::options($record?->currency))->required()->default(fn (): string => Currencies::defaultCode()),
                     ])
                     ->columns(2),
                 Section::make('Owner account')
@@ -172,7 +175,11 @@ class TenantResource extends Resource
     {
         return $table
             ->columns([
-                ImageColumn::make('logo')->label('')->circular()->defaultImageUrl(fn (Tenant $record): string => 'https://ui-avatars.com/api/?name='.urlencode($record->name).'&background=random'),
+                // Not circular: that would crop wide and tall logos. Shown in its real shape instead.
+                ImageColumn::make('logo')->label('')
+                    ->imageHeight(32)
+                    ->extraImgAttributes(['style' => 'width:auto'])
+                    ->defaultImageUrl(fn (Tenant $record): string => 'https://ui-avatars.com/api/?name='.urlencode($record->name).'&background=random'),
                 TextColumn::make('name')->label('Business name')->weight('bold')->searchable()->sortable()
                     ->description(fn (Tenant $record): string => AgencySubdomain::rootFor($record)),
                 TextColumn::make('status')->badge()->sortable()
@@ -237,6 +244,32 @@ class TenantResource extends Resource
                                 static::sendStaffAccessLink($user);
                             }
                         }),
+                    Action::make('impersonate')
+                        ->label('Impersonate')
+                        ->icon('heroicon-o-finger-print')
+                        ->color('warning')
+                        ->visible(fn (Tenant $record): bool => ! $record->trashed()
+                            && $record->status !== 'suspended'
+                            && (bool) auth('super_admin')->user()?->can('update', $record))
+                        ->modalDescription('Opens this agency\'s staff panel signed in as the chosen staff member. The start and end are recorded in the audit log, and a banner stays on screen until you end it.')
+                        ->form([
+                            Select::make('tenant_user_id')->label('Sign in as')
+                                ->options(fn (Tenant $record): array => static::staffAccounts($record)
+                                    ->mapWithKeys(fn (TenantUser $user): array => [$user->id => "{$user->name} ({$user->email})"])
+                                    ->all())
+                                ->default(fn (Tenant $record): ?int => static::staffAccounts($record)->first()?->id)
+                                ->helperText('Defaults to the owner (the tenant\'s first account).')
+                                ->required(),
+                        ])
+                        ->action(function (Tenant $record, array $data, Action $action): void {
+                            $user = static::staffAccounts($record)->firstWhere('id', (int) $data['tenant_user_id']);
+
+                            if ($user === null) {
+                                return;
+                            }
+
+                            $action->redirect(app(TenantImpersonation::class)->start(auth('super_admin')->user(), $user));
+                        }),
                     DeleteAction::make(),
                     RestoreAction::make(),
                 ])
@@ -285,24 +318,6 @@ class TenantResource extends Resource
             'index' => Pages\ListTenants::route('/'),
             'create' => Pages\CreateTenant::route('/create'),
             'edit' => Pages\EditTenant::route('/{record}/edit'),
-        ];
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private static function currencyOptions(): array
-    {
-        return [
-            'USD' => 'USD - US Dollar',
-            'EUR' => 'EUR - Euro',
-            'GBP' => 'GBP - British Pound',
-            'AUD' => 'AUD - Australian Dollar',
-            'CAD' => 'CAD - Canadian Dollar',
-            'AED' => 'AED - UAE Dirham',
-            'INR' => 'INR - Indian Rupee',
-            'NPR' => 'NPR - Nepalese Rupee',
-            'JPY' => 'JPY - Japanese Yen',
         ];
     }
 }

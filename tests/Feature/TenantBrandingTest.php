@@ -33,3 +33,26 @@ test('the tenant panel does not override colors when no brand color is set', fun
         ->assertOk()
         ->assertDontSee(':root{--primary', false);
 });
+
+test('the agency login page shows the business name when no logo is uploaded', function () {
+    $this->seed();
+    $tenant = Tenant::query()->where('slug', 'demo-travel')->firstOrFail();
+
+    $this->get(portalUrl($tenant, '/tenant/login'))
+        ->assertOk()
+        ->assertSeeInOrder(['fi-logo', 'Demo Travel Agency'], false)
+        ->assertDontSee('<img alt="Demo Travel Agency logo"', false);
+});
+
+test('an uploaded logo is shown at its natural size, not cropped or boxed', function () {
+    $this->seed();
+    $tenant = Tenant::query()->where('slug', 'demo-travel')->firstOrFail();
+    $tenant->update(['logo' => 'tenant-logos/wide-logo.png']);
+
+    $this->get(portalUrl($tenant, '/tenant/login'))
+        ->assertOk()
+        ->assertSee('tenant-logos/wide-logo.png', false)
+        ->assertSee('style="height: auto;"', false)
+        ->assertSee('img.fi-logo{width:auto;height:auto;max-width:100%}', false)
+        ->assertDontSee('max-height:6rem', false);
+});

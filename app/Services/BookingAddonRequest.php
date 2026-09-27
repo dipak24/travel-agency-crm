@@ -19,9 +19,12 @@ class BookingAddonRequest
             throw new LogicException('This add-on is no longer available.');
         }
 
+        $unitPrice = $service->unitPriceFor($booking->package_id);
+
         return $booking->addons()->create([
             'service_id' => $service->id,
-            'price' => $service->price * $quantity,
+            'unit_price' => $unitPrice,
+            'price' => $unitPrice * $quantity,
             'quantity' => $quantity,
             'status' => 'requested',
             'added_by' => $requestedBy,

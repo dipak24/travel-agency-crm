@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Resources\SubscriptionPlanResource\Pages;
 use App\Models\SubscriptionPlan;
+use App\Support\PlanFeatures;
 use BackedEnum;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
@@ -47,12 +48,33 @@ class SubscriptionPlanResource extends Resource
                         ->helperText('Inactive plans are hidden from the tenant creation/assignment selects.'),
                 ])
                 ->columns(1),
+            Section::make('Features')
+                ->description('Modules tenants on this plan can use. Switching one off hides it from their staff panel and portal.')
+                ->schema(self::featureToggles())
+                ->columns(2),
             Section::make('Feature limits')
                 ->description('Arbitrary key/value limits enforced elsewhere (e.g. max_staff, max_bookings_per_month).')
                 ->schema([
                     KeyValue::make('feature_limits')->keyPlaceholder('Feature')->valuePlaceholder('Limit')->columnSpanFull(),
                 ]),
         ]);
+    }
+
+    /**
+     * @return array<Toggle>
+     */
+    private static function featureToggles(): array
+    {
+        $toggles = [];
+
+        foreach (PlanFeatures::ALL as $key => $feature) {
+            $toggles[] = Toggle::make("features.{$key}")
+                ->label($feature['label'])
+                ->helperText($feature['description'])
+                ->default(true);
+        }
+
+        return $toggles;
     }
 
     public static function table(Table $table): Table

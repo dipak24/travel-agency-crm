@@ -144,11 +144,31 @@ test('customer uploads are added per document type as pending, never replacing e
         ->and($booking->documents()->where('status', 'pending')->pluck('uploaded_by')->unique()->all())->toBe([$customer->email]);
 });
 
+test('only required document types get an upload card, unless something optional was already uploaded', function () {
+    $tenant = docsAddonsTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $customer = Customer::factory()->create();
+    $booking = Booking::query()->create([
+        'customer_id' => $customer->id, 'trip_name' => 'Everest Base Camp',
+        'document_requirements' => ['passport' => true, 'pp_photo' => false, 'visa' => false, 'insurance' => false, 'other' => false],
+    ]);
+    $booking->documents()->create(['doc_type' => 'other', 'file_path' => 'booking-documents/extra.pdf', 'status' => 'pending', 'uploaded_by' => $customer->email]);
+    Filament::setCurrentPanel('portal');
+
+    Livewire::actingAs($customer, 'customer')->test(ViewBooking::class, ['record' => $booking->getRouteKey()])
+        ->assertActionVisible(TestAction::make('upload_passport')->schemaComponent('documents.documents-passport'))
+        ->assertActionVisible(TestAction::make('upload_other')->schemaComponent('documents.documents-other'))
+        ->assertDontSee('PP size photo');
+});
+
 test('each document type gets its own card with its own upload button and status summary', function () {
     $tenant = docsAddonsTenant('Northwind Travel', 'northwind-travel');
     app(TenantContext::class)->set($tenant);
     $customer = Customer::factory()->create();
-    $booking = Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Everest Base Camp']);
+    $booking = Booking::query()->create([
+        'customer_id' => $customer->id, 'trip_name' => 'Everest Base Camp',
+        'document_requirements' => array_fill_keys(array_keys(BookingDocument::TYPES), true),
+    ]);
     Filament::setCurrentPanel('portal');
 
     $page = Livewire::actingAs($customer, 'customer')->test(ViewBooking::class, ['record' => $booking->getRouteKey()])

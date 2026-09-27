@@ -31,23 +31,29 @@ function bookingExtrasOwner(Tenant $tenant): TenantUser
     return $owner;
 }
 
-test('checking catalog items snapshots them onto the booking, and unchecking removes them', function () {
+test('syncing rows snapshots catalog items onto the booking, and a later sync replaces them', function () {
     $tenant = bookingExtrasTenant('Northwind Travel', 'northwind-travel');
     app(TenantContext::class)->set($tenant);
     $booking = Booking::query()->create(['customer_id' => Customer::factory()->create()->id, 'trip_name' => 'Everest Base Camp']);
-    $transfer = IncludeExclude::query()->create(['type' => 'include', 'title' => 'Airport transfer', 'description' => 'Included']);
+    $transfer = IncludeExclude::query()->create(['type' => 'include', 'title' => 'Airport transfer', 'description' => 'Included', 'unit_price' => 3000]);
     $tips = IncludeExclude::query()->create(['type' => 'exclude', 'title' => 'Tips', 'description' => 'Not included']);
 
-    BookingIncludeExclude::syncForBooking($booking, [$transfer->id, $tips->id]);
+    BookingIncludeExclude::syncRows($booking, [
+        BookingIncludeExclude::rowFromCatalog($transfer),
+        BookingIncludeExclude::rowFromCatalog($tips, 'exclude'),
+    ]);
+
+    $transferRow = $booking->includeExcludes()->where('include_exclude_id', $transfer->id)->first();
 
     expect($booking->includeExcludes()->count())->toBe(2)
-        ->and($booking->includeExcludes()->where('include_exclude_id', $transfer->id)->first()->title)->toBe('Airport transfer')
-        ->and($booking->includeExcludes()->where('include_exclude_id', $transfer->id)->first()->type)->toBe('include');
+        ->and($transferRow->title)->toBe('Airport transfer')
+        ->and($transferRow->type)->toBe('include')
+        ->and($transferRow->unit_price)->toBe(3000);
 
-    BookingIncludeExclude::syncForBooking($booking, [$transfer->id]);
+    BookingIncludeExclude::syncRows($booking, [BookingIncludeExclude::rowFromCatalog($tips, 'exclude')]);
 
     expect($booking->includeExcludes()->count())->toBe(1)
-        ->and($booking->includeExcludes()->where('include_exclude_id', $tips->id)->exists())->toBeFalse();
+        ->and($booking->includeExcludes()->where('include_exclude_id', $transfer->id)->exists())->toBeFalse();
 });
 
 test('syncing a document type creates new pending documents and removes ones no longer present', function () {
@@ -79,7 +85,7 @@ test('syncing one document type never touches another document type\'s rows', fu
     expect($booking->documents()->where('doc_type', 'passport')->count())->toBe(1);
 });
 
-test('the booking form has a rich-text itinerary field, a catalog checkbox list, and per-type upload fields', function () {
+test('the booking form has a rich-text itinerary field, inclusion and exclusion lists, and per-type upload fields', function () {
     $tenant = bookingExtrasTenant('Northwind Travel', 'northwind-travel');
     app(TenantContext::class)->set($tenant);
     $owner = bookingExtrasOwner($tenant);
@@ -88,7 +94,8 @@ test('the booking form has a rich-text itinerary field, a catalog checkbox list,
 
     Livewire::actingAs($owner, 'tenant')->test(CreateBooking::class)
         ->assertFormFieldExists('booked_itinerary')
-        ->assertFormFieldExists('include_exclude_selection')
+        ->assertFormFieldExists('inclusion_rows')
+        ->assertFormFieldExists('exclusion_rows')
         ->assertFormFieldExists('document_files.passport')
         ->assertFormFieldExists('document_files.visa');
 });
@@ -104,6 +111,8 @@ test('the itinerary rich text is saved as-is and survives editing without any st
     Livewire::actingAs($owner, 'tenant')->test(CreateBooking::class)
         ->set('data.customer_id', $customer->id)
         ->set('data.trip_name', 'Private Trek')
+        ->set('data.start_date', now()->addMonth()->toDateString())
+        ->set('data.duration_days', 3)
         ->set('data.status', 'pending')
         ->set('data.booked_itinerary', '<p><strong>Day 1</strong></p><p>Arrival</p>')
         ->call('create')

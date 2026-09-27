@@ -1,5 +1,6 @@
 <?php
 
+use App\Console\Commands\BillSubscriptions;
 use App\Console\Commands\ExpireGiftVouchers;
 use App\Console\Commands\SendBookingReminders;
 use App\Console\Commands\SendScheduledCampaigns;
@@ -13,6 +14,7 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command(ExpireGiftVouchers::class)->daily();
+Schedule::command(BillSubscriptions::class)->dailyAt('02:00')->withoutOverlapping();
 Schedule::command(SendBookingReminders::class)->dailyAt('08:00')->withoutOverlapping();
 Schedule::command(SendScheduledCampaigns::class)->everyMinute()->withoutOverlapping();
 Schedule::command('model:prune', ['--model' => [Activity::class]])->daily();

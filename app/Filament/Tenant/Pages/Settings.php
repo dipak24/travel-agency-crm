@@ -3,6 +3,7 @@
 namespace App\Filament\Tenant\Pages;
 
 use App\Models\Tenant;
+use App\Support\Currencies;
 use App\Support\TenantContext;
 use BackedEnum;
 use DateTimeZone;
@@ -91,17 +92,7 @@ class Settings extends Page
                 ->description('Where invoices and billing correspondence are sent.')
                 ->schema([
                     TextInput::make('billing_email')->label('Billing email')->email()->maxLength(255),
-                    Select::make('currency')->searchable()->options([
-                        'USD' => 'USD - US Dollar',
-                        'EUR' => 'EUR - Euro',
-                        'GBP' => 'GBP - British Pound',
-                        'AUD' => 'AUD - Australian Dollar',
-                        'CAD' => 'CAD - Canadian Dollar',
-                        'AED' => 'AED - UAE Dirham',
-                        'INR' => 'INR - Indian Rupee',
-                        'NPR' => 'NPR - Nepalese Rupee',
-                        'JPY' => 'JPY - Japanese Yen',
-                    ])->required(),
+                    Select::make('currency')->searchable()->options(fn (): array => Currencies::options($this->tenant->currency))->required(),
                 ])
                 ->columns(2),
         ])->statePath('data')->columns(1);

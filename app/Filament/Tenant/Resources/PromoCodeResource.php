@@ -2,9 +2,11 @@
 
 namespace App\Filament\Tenant\Resources;
 
+use App\Filament\Concerns\RequiresPlanFeature;
 use App\Filament\Tenant\Resources\PromoCodeResource\Pages;
 use App\Models\PromoCode;
 use App\Support\Money;
+use App\Support\PlanFeatures;
 use App\Support\TenantContext;
 use BackedEnum;
 use Carbon\Carbon;
@@ -26,6 +28,8 @@ use UnitEnum;
 
 class PromoCodeResource extends Resource
 {
+    use RequiresPlanFeature;
+
     protected static ?string $model = PromoCode::class;
 
     protected static ?string $navigationLabel = 'Promo Codes';
@@ -148,5 +152,10 @@ class PromoCodeResource extends Resource
             'create' => Pages\CreatePromoCode::route('/create'),
             'edit' => Pages\EditPromoCode::route('/{record}/edit'),
         ];
+    }
+
+    protected static function planFeature(): string
+    {
+        return PlanFeatures::PROMO_CODES;
     }
 }

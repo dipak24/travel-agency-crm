@@ -5,6 +5,7 @@ namespace App\Providers\Filament;
 use App\Filament\AgencyBranding;
 use App\Filament\Portal\Pages\Auth\ResetPassword;
 use App\Filament\Portal\Pages\Profile;
+use App\Http\Middleware\EnsurePlatformAvailable;
 use App\Http\Middleware\ResolveAgencySubdomain;
 use App\Http\Middleware\ResolveTenant;
 use Filament\Http\Middleware\Authenticate;
@@ -38,7 +39,7 @@ class PortalPanelProvider extends PanelProvider
             ->authPasswordBroker('customers')
             ->login()
             ->passwordReset(resetAction: ResetPassword::class)
-            ->profile(Profile::class)
+            ->profile(Profile::class, isSimple: false)
             ->colors([
                 'primary' => Color::Amber,
                 'secondary' => Color::Blue,
@@ -51,6 +52,7 @@ class PortalPanelProvider extends PanelProvider
             ])
             ->discoverWidgets(in: app_path('Filament/Portal/Widgets'), for: 'App\Filament\Portal\Widgets')
             ->middleware([
+                EnsurePlatformAvailable::class,
                 ResolveAgencySubdomain::class,
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
@@ -67,6 +69,6 @@ class PortalPanelProvider extends PanelProvider
                 Authenticate::class,
                 ResolveTenant::class,
             ], isPersistent: true)
-            ->persistentMiddleware([ResolveAgencySubdomain::class]));
+            ->persistentMiddleware([EnsurePlatformAvailable::class, ResolveAgencySubdomain::class]));
     }
 }

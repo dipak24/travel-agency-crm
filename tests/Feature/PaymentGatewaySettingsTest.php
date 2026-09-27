@@ -9,6 +9,7 @@ use App\Models\Tenant;
 use App\Models\TenantPaymentGateway;
 use App\Models\TenantUser;
 use App\Notifications\InvoicePaymentLink;
+use App\Services\InvoicePaymentLinks;
 use App\Support\TenantContext;
 use Database\Seeders\PermissionSeeder;
 use Filament\Actions\Testing\TestAction;
@@ -227,4 +228,51 @@ test('the send payment link action is hidden once an invoice is fully paid', fun
         ->test(ListInvoices::class)
         ->set('activeTab', 'paid')
         ->assertActionHidden(TestAction::make('sendPaymentLink')->table($invoice));
+});
+
+test('the copy payment link action stays disabled until the agency has a payment method enabled', function () {
+    $tenant = pgsTenant('Northwind Travel', 'northwind-travel');
+    (new PermissionSeeder)->run();
+    app(TenantContext::class)->set($tenant);
+    $owner = pgsOwner($tenant);
+    $customer = Customer::factory()->create();
+    $booking = Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'K2 Base Camp']);
+    $invoice = Invoice::query()->create([
+        'booking_id' => $booking->id, 'customer_id' => $customer->id,
+        'amount' => 100000, 'total' => 100000, 'currency' => 'USD', 'status' => 'issued',
+    ]);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(ListInvoices::class)
+        ->assertActionVisible(TestAction::make('copyPaymentLink')->table($invoice))
+        ->assertActionDisabled(TestAction::make('copyPaymentLink')->table($invoice));
+
+    TenantPaymentGateway::query()->create([
+        'tenant_id' => $tenant->id, 'gateway' => 'paypal', 'enabled' => true,
+        'credentials' => ['mode' => 'sandbox', 'client_id' => 'id', 'client_secret' => 'secret', 'webhook_id' => 'wh'],
+    ]);
+
+    Livewire::actingAs($owner, 'tenant')->test(ListInvoices::class)
+        ->assertActionEnabled(TestAction::make('copyPaymentLink')->table($invoice))
+        ->mountAction(TestAction::make('copyPaymentLink')->table($invoice))
+        ->assertMountedActionModalSee(['/pay/'.$invoice->id, 'No login needed']);
+});
+
+test('a copied payment link is signed for the agency subdomain and opens without any login', function () {
+    $tenant = pgsTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $customer = Customer::factory()->create();
+    $invoice = Invoice::query()->create([
+        'customer_id' => $customer->id, 'amount' => 25000, 'total' => 25000, 'currency' => 'USD', 'status' => 'issued',
+    ]);
+
+    $url = app(InvoicePaymentLinks::class)->url($invoice, 30);
+
+    expect(parse_url($url, PHP_URL_HOST))->toBe('northwind-travel.'.config('agency.domain'))
+        ->and(Request::create($url)->hasValidSignature())->toBeTrue()
+        ->and((int) Request::create($url)->query('expires'))->toBe(now()->addDays(30)->getTimestamp());
+
+    $this->get($url)->assertOk()->assertSee($invoice->invoice_no);
+    $this->get(preg_replace('/signature=\w+/', 'signature=tampered', $url))->assertForbidden();
 });

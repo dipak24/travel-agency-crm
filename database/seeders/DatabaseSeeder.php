@@ -70,7 +70,7 @@ class DatabaseSeeder extends Seeder
         );
         app(TenantContext::class)->clear();
 
-        $this->call([PermissionSeeder::class, EmailTemplateSeeder::class]);
+        $this->call([PermissionSeeder::class, EmailTemplateSeeder::class, DemoCatalogSeeder::class]);
 
         // Super admins use the fixed sentinel team id (0) — see ResolvePlatformTeam.
         app(PermissionRegistrar::class)->setPermissionsTeamId(0);

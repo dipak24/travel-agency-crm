@@ -2,11 +2,13 @@
 
 namespace App\Filament\Portal\Pages;
 
+use App\Filament\Concerns\RequiresPlanFeature;
 use App\Filament\Forms\Components\MoneyInput;
 use App\Models\Invoice;
 use App\Services\GiftVoucherPurchase;
 use App\Services\PaymentGateways\PaymentGatewayResolver;
 use App\Support\Money;
+use App\Support\PlanFeatures;
 use BackedEnum;
 use Closure;
 use Filament\Actions\Action;
@@ -31,6 +33,8 @@ use Illuminate\Support\HtmlString;
 
 class BuyGiftVoucher extends Page
 {
+    use RequiresPlanFeature;
+
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-gift';
 
     protected static ?string $navigationLabel = 'Buy a Gift Voucher';
@@ -336,5 +340,10 @@ class BuyGiftVoucher extends Page
                     Actions::make($this->getFormActions())->key('form-actions'),
                 ]),
         ]);
+    }
+
+    protected static function planFeature(): string
+    {
+        return PlanFeatures::GIFT_VOUCHERS;
     }
 }

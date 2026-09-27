@@ -17,7 +17,8 @@ class BookingDocument extends Model
 
     /**
      * Document types, shared by the tenant booking form and the customer portal so both upload
-     * the same set of per-type fields.
+     * the same set of per-type fields. Mirrors App\Enums\DocumentType (kept as a constant for
+     * existing callers).
      */
     public const TYPES = [
         'passport' => 'Passport',
@@ -36,7 +37,24 @@ class BookingDocument extends Model
 
     public const MAX_SIZE_KB = 5120;
 
-    public const UPLOAD_RULES_HINT = 'Accepted: PDF, JPG, PNG. Min 10 KB, max 5 MB per file.';
+    public const UPLOAD_RULES_HINT = 'You can select several files at once. Accepted: PDF, JPG, PNG — 10 KB to 5 MB per file.';
+
+    /**
+     * "Other documents" are always optional extras, capped per booking (booking-level files).
+     */
+    public const MAX_OTHER_FILES = 5;
+
+    public const OTHER_UPLOAD_HINT = 'Optional. Up to 5 files in total — select several at once. PDF, JPG, PNG, 10 KB to 5 MB each.';
+
+    /**
+     * How many more booking-level "other" files this booking can take.
+     */
+    public static function otherFilesRemaining(Booking $booking): int
+    {
+        $used = $booking->documents()->where('doc_type', 'other')->whereNull('booking_traveler_id')->count();
+
+        return max(0, self::MAX_OTHER_FILES - $used);
+    }
 
     /**
      * Adds a customer's newly uploaded files to a booking as `pending` documents, one row per file.
@@ -56,7 +74,13 @@ class BookingDocument extends Model
         $added = 0;
 
         foreach (array_intersect_key($filePathsByType, self::TYPES) as $docType => $filePaths) {
-            foreach (array_filter((array) $filePaths) as $filePath) {
+            $filePaths = array_values(array_filter((array) $filePaths));
+
+            if ($docType === 'other' && $traveler === null) {
+                $filePaths = array_slice($filePaths, 0, self::otherFilesRemaining($booking));
+            }
+
+            foreach ($filePaths as $filePath) {
                 $booking->documents()->create([
                     'booking_traveler_id' => $traveler?->getKey(),
                     'doc_type' => $docType,

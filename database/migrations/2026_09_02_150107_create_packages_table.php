@@ -22,6 +22,10 @@ return new class extends Migration
             $table->unsignedInteger('base_price')->default(0);
             $table->unsignedInteger('sales_price')->default(0);
             $table->unsignedSmallInteger('duration_days');
+            $table->string('category')->default('trek');
+            $table->unsignedSmallInteger('min_pax')->default(1);
+            $table->unsignedSmallInteger('max_pax')->nullable();
+            $table->jsonb('document_requirements')->nullable();
             $table->boolean('is_public')->default(false);
             $table->string('status')->default('draft');
             $table->timestamps();

@@ -7,6 +7,7 @@ use App\Filament\Resources\TenantInvoiceResource\Pages;
 use App\Filament\Resources\TenantInvoiceResource\RelationManagers\PaymentsRelationManager;
 use App\Models\TenantInvoice;
 use App\Models\TenantSubscription;
+use App\Support\Currencies;
 use App\Support\Money;
 use BackedEnum;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -101,10 +102,7 @@ class TenantInvoiceResource extends Resource
                             ->readOnly()
                             ->helperText('Auto-generated when the invoice is created.')
                             ->hiddenOn('create'),
-                        Select::make('currency')->options([
-                            'USD' => 'USD', 'EUR' => 'EUR', 'GBP' => 'GBP', 'AUD' => 'AUD',
-                            'CAD' => 'CAD', 'AED' => 'AED', 'INR' => 'INR', 'NPR' => 'NPR', 'JPY' => 'JPY',
-                        ])->required()->default('USD'),
+                        Select::make('currency')->options(fn (?TenantInvoice $record): array => Currencies::options($record?->currency))->required()->default(fn (): string => Currencies::defaultCode()),
                         DatePicker::make('issue_date')->native(false)->required()->default(now()->toDateString()),
                         DatePicker::make('due_date')->native(false),
                         MoneyInput::make('tax')->label('Tax')->minValue(0)->default(0),

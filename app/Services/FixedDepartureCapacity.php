@@ -37,6 +37,36 @@ class FixedDepartureCapacity
     }
 
     /**
+     * Moves a booking's seats when its departure or pax count changes: releases what the booking
+     * held before and reserves what it needs now, in one transaction, so a failed reservation
+     * (not enough seats) leaves the old seats untouched.
+     */
+    public function adjust(?FixedDeparture $from, int $fromPax, ?FixedDeparture $to, int $toPax): void
+    {
+        DB::transaction(function () use ($from, $fromPax, $to, $toPax): void {
+            if ($from !== null && $to !== null && $from->is($to)) {
+                $difference = $toPax - $fromPax;
+
+                if ($difference > 0) {
+                    $this->reserve($to, $difference);
+                } elseif ($difference < 0) {
+                    $this->release($to, -$difference);
+                }
+
+                return;
+            }
+
+            if ($from !== null && $fromPax > 0) {
+                $this->release($from, $fromPax);
+            }
+
+            if ($to !== null && $toPax > 0) {
+                $this->reserve($to, $toPax);
+            }
+        });
+    }
+
+    /**
      * Releases slots previously reserved via `reserve()` — used when a booking against this
      * departure is cancelled. Never re-opens a departure that was explicitly `closed`/`cancelled`
      * on its own terms, only flips a `full` departure back to `open` once it has room again.

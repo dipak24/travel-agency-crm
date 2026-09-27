@@ -1,10 +1,12 @@
 <?php
 
 use App\Http\Controllers\CustomerEmailChangeController;
+use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\Payments\CheckoutController;
 use App\Http\Controllers\Payments\PublicPaymentController;
 use App\Http\Controllers\Payments\WebhookController;
 use App\Http\Controllers\UnsubscribeController;
+use App\Http\Middleware\EnsurePlatformAvailable;
 use App\Http\Middleware\ResolveAgencySubdomain;
 use App\Http\Middleware\ResolveTenant;
 use Illuminate\Support\Facades\Route;
@@ -13,7 +15,7 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-Route::middleware([ResolveAgencySubdomain::class, 'auth:customer', ResolveTenant::class])
+Route::middleware([EnsurePlatformAvailable::class, ResolveAgencySubdomain::class, 'auth:customer', ResolveTenant::class])
     ->prefix('portal/pay')
     ->name('payments.')
     ->group(function (): void {
@@ -21,7 +23,7 @@ Route::middleware([ResolveAgencySubdomain::class, 'auth:customer', ResolveTenant
         Route::get('/{gateway}/{invoice}/return', [CheckoutController::class, 'return'])->name('return');
     });
 
-Route::prefix('pay')->name('public.pay.')->group(function (): void {
+Route::middleware(EnsurePlatformAvailable::class)->prefix('pay')->name('public.pay.')->group(function (): void {
     Route::get('/{invoice}', [PublicPaymentController::class, 'show'])->name('show')->middleware('signed');
     Route::get('/{gateway}/{invoice}/start', [PublicPaymentController::class, 'start'])->name('start')->middleware(['signed', 'throttle:20,1']);
     Route::get('/{gateway}/{invoice}/return', [PublicPaymentController::class, 'return'])->name('return');
@@ -34,7 +36,12 @@ Route::middleware(['signed', 'throttle:20,1'])->group(function (): void {
     Route::post('/unsubscribe', [UnsubscribeController::class, 'store'])->name('email.unsubscribe.store');
 });
 
-Route::middleware([ResolveAgencySubdomain::class, 'signed', 'throttle:6,1'])->prefix('portal/email-change')->name('portal.email-change.')->group(function (): void {
+Route::middleware([ResolveAgencySubdomain::class])->prefix('impersonate')->name('impersonation.')->group(function (): void {
+    Route::get('/{token}', [ImpersonationController::class, 'enter'])->name('enter')->middleware(['signed', 'throttle:10,1']);
+    Route::post('/leave', [ImpersonationController::class, 'leave'])->name('leave');
+});
+
+Route::middleware([EnsurePlatformAvailable::class, ResolveAgencySubdomain::class, 'signed', 'throttle:6,1'])->prefix('portal/email-change')->name('portal.email-change.')->group(function (): void {
     Route::get('/{customer}/{hash}', [CustomerEmailChangeController::class, 'show'])->name('verify')->whereNumber('customer');
     Route::post('/{customer}/{hash}', [CustomerEmailChangeController::class, 'store'])->name('confirm')->whereNumber('customer');
 });

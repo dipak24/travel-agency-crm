@@ -6,6 +6,7 @@ use App\Filament\Concerns\HasFullWidthForm;
 use App\Filament\Resources\TenantResource;
 use App\Models\Tenant;
 use App\Models\TenantSubscription;
+use App\Services\SubscriptionBilling;
 use App\Support\TenantContext;
 use Filament\Resources\Pages\EditRecord;
 
@@ -61,6 +62,7 @@ class EditTenant extends EditRecord
                 'plan_id' => $this->selectedPlanId,
                 'status' => $tenant->status === 'trial' ? 'trialing' : 'active',
                 'starts_at' => now(),
+                'next_billing_at' => SubscriptionBilling::firstBillingDate($tenant),
             ]);
         } finally {
             $tenantContext->clear();

@@ -6,6 +6,7 @@ use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Resources\TenantPaymentResource\Pages;
 use App\Models\TenantInvoice;
 use App\Models\TenantPayment;
+use App\Support\Currencies;
 use App\Support\Money;
 use BackedEnum;
 use Filament\Forms\Components\DateTimePicker;
@@ -60,10 +61,7 @@ class TenantPaymentResource extends Resource
                                 }
                             }),
                         MoneyInput::make('amount')->label('Amount')->minValue(0)->required(),
-                        Select::make('currency')->options([
-                            'USD' => 'USD', 'EUR' => 'EUR', 'GBP' => 'GBP', 'AUD' => 'AUD',
-                            'CAD' => 'CAD', 'AED' => 'AED', 'INR' => 'INR', 'NPR' => 'NPR', 'JPY' => 'JPY',
-                        ])->required()->default('USD'),
+                        Select::make('currency')->options(fn (?TenantPayment $record): array => Currencies::options($record?->currency))->required()->default(fn (): string => Currencies::defaultCode()),
                         Select::make('method')->options([
                             'bank_transfer' => 'Bank transfer',
                             'card' => 'Card',

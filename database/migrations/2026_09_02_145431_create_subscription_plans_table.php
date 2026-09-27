@@ -17,6 +17,7 @@ return new class extends Migration
             $table->unsignedInteger('price')->default(0);
             $table->string('billing_cycle')->default('monthly');
             $table->json('feature_limits')->nullable();
+            $table->jsonb('features')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });

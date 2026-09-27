@@ -76,11 +76,12 @@ test('a documents reminder is sent once for the closest schedule rule reached', 
         ->and(Reminder::query()->withoutGlobalScopes()->latest('id')->first()->reminder_rule)->toBe('days_before:7');
 });
 
-test('the documents reminder is skipped once documents are uploaded, but not when every upload of a type was rejected', function () {
+test('the documents reminder is skipped once every required type is uploaded, but not when a required upload was rejected', function () {
     Notification::fake();
     $tenant = remindersTenant(['documents' => ['enabled' => true, 'days_before' => [14]]]);
-    $uploaded = remindersBooking($tenant, remindersToday()->addDays(10));
-    $rejected = remindersBooking($tenant, remindersToday()->addDays(10));
+    $onlyPassport = ['passport' => true, 'pp_photo' => false, 'visa' => false, 'insurance' => false, 'other' => false];
+    $uploaded = remindersBooking($tenant, remindersToday()->addDays(10), ['document_requirements' => $onlyPassport]);
+    $rejected = remindersBooking($tenant, remindersToday()->addDays(10), ['document_requirements' => $onlyPassport]);
 
     app(TenantContext::class)->wrap($tenant, function () use ($uploaded, $rejected): void {
         $uploaded->documents()->create(['uploaded_by' => 'customer', 'file_path' => 'docs/a.pdf', 'doc_type' => 'passport', 'status' => 'pending']);
@@ -91,6 +92,20 @@ test('the documents reminder is skipped once documents are uploaded, but not whe
 
     Notification::assertNotSentTo(remindersCustomer($uploaded), BookingReminder::class);
     Notification::assertSentTo(remindersCustomer($rejected), BookingReminder::class);
+});
+
+test('the documents reminder is still sent while a required type is missing, even if optional ones are uploaded', function () {
+    Notification::fake();
+    $tenant = remindersTenant(['documents' => ['enabled' => true, 'days_before' => [14]]]);
+    $booking = remindersBooking($tenant, remindersToday()->addDays(10), [
+        'document_requirements' => ['passport' => true, 'pp_photo' => false, 'visa' => false, 'insurance' => false, 'other' => false],
+    ]);
+
+    app(TenantContext::class)->wrap($tenant, fn () => $booking->documents()->create(['uploaded_by' => 'customer', 'file_path' => 'docs/visa.pdf', 'doc_type' => 'visa', 'status' => 'approved']));
+
+    app(BookingReminders::class)->sendDue(remindersToday());
+
+    Notification::assertSentTo(remindersCustomer($booking), BookingReminder::class);
 });
 
 test('a traveler details reminder is sent while travelers are missing or incomplete', function () {

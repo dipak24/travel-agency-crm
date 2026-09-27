@@ -17,6 +17,8 @@ return new class extends Migration
             $table->string('type');
             $table->string('title');
             $table->text('description')->nullable();
+            $table->unsignedInteger('unit_price')->default(0);
+            $table->string('pricing_unit')->default('per_person');
             $table->unsignedSmallInteger('sort_order')->default(0);
             $table->timestamps();
             $table->index(['tenant_id', 'type', 'sort_order']);

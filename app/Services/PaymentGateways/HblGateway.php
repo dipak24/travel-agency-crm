@@ -5,9 +5,11 @@ namespace App\Services\PaymentGateways;
 use App\Contracts\PaymentGateway;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\Tenant;
 use App\Services\PaymentGateways\Concerns\ResolvesTenantCredentials;
 use App\Services\PaymentGateways\Hbl\JoseCodec;
 use App\Support\PaymentReturnResult;
+use App\Support\PlanFeatures;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -56,6 +58,10 @@ class HblGateway implements PaymentGateway
 
     public function isEnabledFor(Invoice $invoice): bool
     {
+        if (! PlanFeatures::allows(Tenant::query()->find($invoice->tenant_id), PlanFeatures::ONLINE_PAYMENTS)) {
+            return false;
+        }
+
         $settings = $this->settingsFor($invoice);
 
         if (! $settings?->enabled) {

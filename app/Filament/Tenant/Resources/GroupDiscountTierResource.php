@@ -2,6 +2,7 @@
 
 namespace App\Filament\Tenant\Resources;
 
+use App\Enums\DiscountType;
 use App\Filament\Tenant\Resources\GroupDiscountTierResource\Pages;
 use App\Models\GroupDiscountTier;
 use App\Support\Money;
@@ -30,28 +31,49 @@ class GroupDiscountTierResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
-            Select::make('package_id')->relationship('package', 'name')->searchable()->preload(),
+            Select::make('package_id')->relationship('package', 'name')->searchable()->preload()
+                ->helperText('Leave empty to apply to every package. A package\'s own tier wins over an all-package tier.'),
+            ...static::tierFields(),
+        ]);
+    }
+
+    /**
+     * The tier's pax range and discount, shared with PackageResource's discount tiers tab.
+     * A fixed discount is an amount off per person.
+     *
+     * @return array<int, Select|TextInput>
+     */
+    public static function tierFields(): array
+    {
+        return [
             TextInput::make('min_pax')->numeric()->integer()->minValue(1)->required(),
             TextInput::make('max_pax')->numeric()->integer()->minValue(1),
-            Select::make('discount_type')->options([
-                'percentage' => 'Percentage',
-                'fixed' => 'Fixed amount',
-            ])->required()->live(),
+            Select::make('discount_type')->options(DiscountType::class)->required()->live(),
             TextInput::make('discount_value')
-                ->label(fn (Get $get): string => $get('discount_type') === 'percentage' ? 'Discount (%)' : 'Discount amount')
-                ->suffix(fn (Get $get): ?string => $get('discount_type') === 'percentage' ? '%' : null)
+                ->label(fn (Get $get): string => static::isPercentage($get('discount_type')) ? 'Discount (%)' : 'Discount per person')
+                ->suffix(fn (Get $get): ?string => static::isPercentage($get('discount_type')) ? '%' : null)
                 ->numeric()
                 ->minValue(0)
                 ->required()
                 ->afterStateHydrated(function (TextInput $component, $state, Get $get): void {
-                    if ($get('discount_type') === 'fixed' && filled($state)) {
+                    if (static::isFixed($get('discount_type')) && filled($state)) {
                         $component->state(Money::toDecimal($state));
                     }
                 })
-                ->dehydrateStateUsing(fn ($state, Get $get) => $get('discount_type') === 'fixed'
+                ->dehydrateStateUsing(fn ($state, Get $get) => static::isFixed($get('discount_type'))
                     ? Money::toCents($state)
                     : (int) $state),
-        ]);
+        ];
+    }
+
+    private static function isPercentage(mixed $type): bool
+    {
+        return ($type instanceof DiscountType ? $type->value : $type) === DiscountType::Percentage->value;
+    }
+
+    private static function isFixed(mixed $type): bool
+    {
+        return ($type instanceof DiscountType ? $type->value : $type) === DiscountType::Fixed->value;
     }
 
     public static function table(Table $table): Table

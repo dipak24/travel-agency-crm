@@ -1,6 +1,7 @@
 <?php
 
 use App\Filament\Portal\Pages\Profile;
+use App\Models\Booking;
 use App\Models\Country;
 use App\Models\Customer;
 use App\Models\Tenant;
@@ -24,6 +25,22 @@ test('a customer can view and reach the portal profile page', function () {
     $customer = Customer::factory()->create(['password' => 'secret-password']);
 
     $this->actingAs($customer, 'customer')->get(portalUrl($tenant, '/portal/profile'))->assertOk();
+});
+
+test('the portal profile groups details into side tabs and lists only the customer\'s own bookings', function () {
+    $tenant = profileTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $customer = Customer::factory()->create(['password' => 'secret-password']);
+    $otherCustomer = Customer::factory()->create();
+
+    Booking::query()->create(['customer_id' => $customer->id, 'trip_name' => 'Everest Base Camp']);
+    Booking::query()->create(['customer_id' => $otherCustomer->id, 'trip_name' => 'Annapurna Circuit']);
+
+    $this->actingAs($customer, 'customer')->get(portalUrl($tenant, '/portal/profile'))
+        ->assertOk()
+        ->assertSeeInOrder(['Profile details', 'Contact', 'Travel preferences', 'Booking history', 'Security'])
+        ->assertSee('Everest Base Camp')
+        ->assertDontSee('Annapurna Circuit');
 });
 
 test('a customer can update their contact details, passport number, and avatar', function () {

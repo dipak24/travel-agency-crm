@@ -20,6 +20,8 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Lead;
 use App\Models\Package;
+use App\Models\PackageIncludeExclude;
+use App\Models\PackageService;
 use App\Models\Payment;
 use App\Models\PlatformEmailTemplate;
 use App\Models\PromoCode;
@@ -111,6 +113,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(FixedDeparture::class, TenantCatalogPolicy::class);
         Gate::policy(GroupDiscountTier::class, TenantCatalogPolicy::class);
         Gate::policy(Service::class, TenantCatalogPolicy::class);
+        Gate::policy(PackageIncludeExclude::class, TenantCatalogPolicy::class);
+        Gate::policy(PackageService::class, TenantCatalogPolicy::class);
         Gate::policy(PromoCode::class, TenantCatalogPolicy::class);
         Gate::policy(GiftVoucher::class, TenantCatalogPolicy::class);
         Gate::policy(Payment::class, PaymentPolicy::class);
@@ -157,10 +161,13 @@ class AppServiceProvider extends ServiceProvider
         // config('auth.defaults.guard') guard ('tenant' here), so an action
         // performed on the super_admin or customer guard would otherwise be
         // logged with no causer at all. Check all three guards instead.
+        // An explicit ->causedBy($model) passes that model in, and it wins.
         app(CauserResolver::class)->resolveUsing(
-            fn (): ?Model => Auth::guard('super_admin')->user()
-                ?? Auth::guard('tenant')->user()
-                ?? Auth::guard('customer')->user()
+            fn (Model|int|string|null $explicitCauser = null): ?Model => $explicitCauser instanceof Model
+                ? $explicitCauser
+                : (Auth::guard('super_admin')->user()
+                    ?? Auth::guard('tenant')->user()
+                    ?? Auth::guard('customer')->user())
         );
     }
 }

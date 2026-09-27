@@ -304,3 +304,22 @@ test('a platform admin can soft-delete a tenant', function () {
     expect(Tenant::query()->find($tenant->getKey()))->toBeNull()
         ->and(Tenant::withTrashed()->find($tenant->getKey()))->not->toBeNull();
 });
+test('logos and favicons of any size or shape are accepted as uploaded', function (string $field, int $width, int $height) {
+    Storage::fake('public');
+    $this->seed();
+
+    $admin = SuperAdmin::query()->where('email', 'admin@example.com')->firstOrFail();
+    $tenant = Tenant::query()->where('slug', 'demo-travel')->firstOrFail();
+
+    Livewire::actingAs($admin, 'super_admin')->test(EditTenant::class, ['record' => $tenant->getRouteKey()])
+        ->set("data.{$field}", UploadedFile::fake()->image("{$field}.png", $width, $height))
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($tenant->fresh()->{$field})->not->toBeNull();
+})->with([
+    'wide logo' => ['logo', 900, 60],
+    'tall logo' => ['logo', 120, 400],
+    'small logo' => ['logo', 40, 20],
+    'rectangular favicon' => ['favicon', 64, 32],
+]);

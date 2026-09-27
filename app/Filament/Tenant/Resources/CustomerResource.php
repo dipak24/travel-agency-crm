@@ -8,6 +8,7 @@ use App\Enums\CustomerStatus;
 use App\Filament\Concerns\SendsAccountLinks;
 use App\Filament\Forms\Components\CountrySelect;
 use App\Filament\Tenant\Resources\CustomerResource\Pages;
+use App\Models\Booking;
 use App\Models\Customer;
 use App\Services\Auth\AccountSetupLinks;
 use App\Services\Auth\CustomerEmailChange;
@@ -27,11 +28,14 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\RepeatableEntry;
+use Filament\Infolists\Components\RepeatableEntry\TableColumn;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Tabs;
+use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
@@ -40,6 +44,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Validation\Rule;
 use UnitEnum;
 
@@ -65,80 +70,101 @@ class CustomerResource extends Resource
         return $schema
             ->columns(1)
             ->components([
-                Section::make('Account')
+                Tabs::make('Customer')
+                    ->vertical()
+                    ->persistTabInQueryString()
                     ->columnSpanFull()
-                    ->schema([
-                        TextInput::make('name')->required()->maxLength(255),
-                        static::emailField()
-                            ->disabled(fn (?Customer $record): bool => $record?->isEmailVerified() ?? false)
-                            ->helperText(fn (?Customer $record): ?string => $record?->isEmailVerified()
-                                ? 'Verified emails can only be changed with the "Change email" action, which asks the customer to confirm the new address.'
-                                : null),
-                        static::typeField(),
-                    ])
-                    ->columns(3),
-                Section::make('Contact')
-                    ->columnSpanFull()
-                    ->schema([
-                        static::mobileField()->required(),
-                        Toggle::make('whatsapp_same_as_mobile')->label('WhatsApp same as mobile')->live()->inline(false),
-                        TextInput::make('whatsapp_number')->label('WhatsApp number')->tel()->maxLength(255)
-                            ->hidden(fn (Get $get): bool => (bool) $get('whatsapp_same_as_mobile')),
-                        Select::make('preferred_contact_method')->options(ContactMethod::class),
-                        TextInput::make('preferred_language')->maxLength(255),
-                        Textarea::make('address')->rows(2)->columnSpanFull(),
-                    ])
-                    ->columns(3),
-                Section::make('Personal details')
-                    ->columnSpanFull()
-                    ->schema([
-                        DatePicker::make('date_of_birth')->required()->maxDate(today()),
-                        CountrySelect::make('nationality_id', nationality: true)->label('Nationality')->required(),
-                        CountrySelect::make('country_of_residence_id')->label('Country of residence'),
-                    ])
-                    ->columns(3),
-                Section::make('Emergency contact')
-                    ->columnSpanFull()
-                    ->schema([
-                        TextInput::make('emergency_contact_name')->label('Name')->maxLength(255),
-                        TextInput::make('emergency_contact_phone')->label('Phone')->tel()->maxLength(255),
-                        TextInput::make('emergency_contact_relationship')->label('Relationship')->maxLength(255),
-                    ])
-                    ->columns(3)
-                    ->collapsible(),
-                Section::make('Travel preferences')
-                    ->columnSpanFull()
-                    ->schema([
-                        TagsInput::make('travel_interests')->placeholder('e.g. trekking, wildlife, culture'),
-                        TextInput::make('preferred_activity')->label('Preferred trek / activity type')->maxLength(255),
-                        Textarea::make('dietary_preferences')->rows(2),
-                        Textarea::make('special_requirements')->rows(2),
-                        Textarea::make('notes')->rows(3)->columnSpanFull(),
-                    ])
-                    ->columns(2)
-                    ->collapsible(),
-                Section::make('Special dates')
-                    ->description('Anniversaries and other occasions to remember. The birthday comes from the date of birth above.')
-                    ->columnSpanFull()
-                    ->schema([
-                        Repeater::make('specialDates')
-                            ->relationship()
-                            ->hiddenLabel()
+                    ->tabs([
+                        Tab::make('Profile details')
+                            ->icon('heroicon-o-user-circle')
                             ->schema([
-                                Select::make('type')->options(CustomerSpecialDateType::class)->required()->live(),
-                                TextInput::make('label')->maxLength(255)
-                                    ->required(fn (Get $get): bool => $get('type') === CustomerSpecialDateType::Other->value
-                                        || $get('type') === CustomerSpecialDateType::Other),
-                                DatePicker::make('date')->required(),
-                                Toggle::make('remind')->label('Remind staff')->live()->inline(false),
-                                TextInput::make('remind_days_before')->label('Days before')->numeric()->minValue(0)->maxValue(365)
-                                    ->visible(fn (Get $get): bool => (bool) $get('remind')),
-                            ])
-                            ->columns(5)
-                            ->defaultItems(0)
-                            ->addActionLabel('Add special date'),
-                    ])
-                    ->collapsible(),
+                                Section::make('Profile details')
+                                    ->description('Who the customer is, as it appears on bookings and invoices.')
+                                    ->schema([
+                                        TextInput::make('name')->required()->maxLength(255),
+                                        static::typeField(),
+                                        DatePicker::make('date_of_birth')->required()->maxDate(today()),
+                                        CountrySelect::make('nationality_id', nationality: true)->label('Nationality')->required(),
+                                        CountrySelect::make('country_of_residence_id')->label('Country of residence'),
+                                        TextInput::make('preferred_language')->maxLength(255),
+                                    ])
+                                    ->columns(2),
+                            ]),
+                        Tab::make('Contact')
+                            ->icon('heroicon-o-phone')
+                            ->schema([
+                                Section::make('Contact')
+                                    ->description('How the agency reaches the customer.')
+                                    ->schema([
+                                        static::emailField()
+                                            ->disabled(fn (?Customer $record): bool => $record?->isEmailVerified() ?? false)
+                                            ->helperText(fn (?Customer $record): ?string => $record?->isEmailVerified()
+                                                ? 'Verified emails can only be changed with the "Change email" action, which asks the customer to confirm the new address.'
+                                                : null),
+                                        static::mobileField()->required(),
+                                        Toggle::make('whatsapp_same_as_mobile')->label('WhatsApp same as mobile')->live()->inline(false),
+                                        TextInput::make('whatsapp_number')->label('WhatsApp number')->tel()->maxLength(255)
+                                            ->hidden(fn (Get $get): bool => (bool) $get('whatsapp_same_as_mobile')),
+                                        Select::make('preferred_contact_method')->options(ContactMethod::class),
+                                        Textarea::make('address')->rows(2)->columnSpanFull(),
+                                    ])
+                                    ->columns(2),
+                                Section::make('Emergency contact')
+                                    ->description('Who to call if something happens during a trip.')
+                                    ->schema([
+                                        TextInput::make('emergency_contact_name')->label('Name')->maxLength(255),
+                                        TextInput::make('emergency_contact_phone')->label('Phone')->tel()->maxLength(255),
+                                        TextInput::make('emergency_contact_relationship')->label('Relationship')->maxLength(255),
+                                    ])
+                                    ->columns(3),
+                            ]),
+                        Tab::make('Travel preferences')
+                            ->icon('heroicon-o-globe-asia-australia')
+                            ->schema([
+                                Section::make('Travel preferences')
+                                    ->description('Used to tailor trip suggestions and prepare for departures.')
+                                    ->schema([
+                                        TagsInput::make('travel_interests')->placeholder('e.g. trekking, wildlife, culture'),
+                                        TextInput::make('preferred_activity')->label('Preferred trek / activity type')->maxLength(255),
+                                        Textarea::make('dietary_preferences')->rows(3),
+                                        Textarea::make('special_requirements')->rows(3),
+                                    ])
+                                    ->columns(2),
+                            ]),
+                        Tab::make('Special dates')
+                            ->icon('heroicon-o-gift')
+                            ->schema([
+                                Section::make('Special dates')
+                                    ->description('Anniversaries and other occasions to remember. The birthday comes from the date of birth under Profile details.')
+                                    ->schema([
+                                        Repeater::make('specialDates')
+                                            ->relationship()
+                                            ->hiddenLabel()
+                                            ->schema([
+                                                Select::make('type')->options(CustomerSpecialDateType::class)->required()->live(),
+                                                TextInput::make('label')->maxLength(255)
+                                                    ->required(fn (Get $get): bool => $get('type') === CustomerSpecialDateType::Other->value
+                                                        || $get('type') === CustomerSpecialDateType::Other),
+                                                DatePicker::make('date')->required(),
+                                                Toggle::make('remind')->label('Remind staff')->live()->inline(false),
+                                                TextInput::make('remind_days_before')->label('Days before')->numeric()->minValue(0)->maxValue(365)
+                                                    ->visible(fn (Get $get): bool => (bool) $get('remind')),
+                                            ])
+                                            ->columns(5)
+                                            ->defaultItems(0)
+                                            ->addActionLabel('Add special date'),
+                                    ]),
+                            ]),
+                        Tab::make('Notes')
+                            ->icon('heroicon-o-pencil-square')
+                            ->schema([
+                                Section::make('Internal notes')
+                                    ->description('Only visible to agency staff.')
+                                    ->schema([
+                                        Textarea::make('notes')->hiddenLabel()->rows(6),
+                                    ]),
+                            ]),
+                    ]),
             ]);
     }
 
@@ -162,84 +188,190 @@ class CustomerResource extends Resource
     public static function infolist(Schema $schema): Schema
     {
         return $schema
-            ->columns(3)
+            ->columns(1)
             ->components([
-                Section::make('Profile')
-                    ->columnSpan(2)
-                    ->schema([
-                        TextEntry::make('name'),
-                        TextEntry::make('type')->badge()->formatStateUsing(fn (string $state): string => str($state)->replace('_', ' ')->title()),
-                        TextEntry::make('date_of_birth')->label('Date of birth')->date('M j, Y')->placeholder('—'),
-                        TextEntry::make('nationality.nationality')->label('Nationality')->placeholder('—'),
-                        TextEntry::make('countryOfResidence.name')->label('Country of residence')->placeholder('—'),
-                        TextEntry::make('preferred_language')->placeholder('—'),
-                    ])
-                    ->columns(3),
-                Section::make('Account')
-                    ->columnSpan(1)
+                Section::make()
+                    ->columnSpanFull()
                     ->schema([
                         TextEntry::make('status')->badge(),
-                        TextEntry::make('email_verified_at')->label('Email')
-                            ->state(fn (Customer $record): string => $record->isEmailVerified() ? 'Verified' : 'Pending verification')
-                            ->badge()
-                            ->color(fn (Customer $record): string => $record->isEmailVerified() ? 'success' : 'warning')
-                            ->helperText(fn (Customer $record): ?string => $record->email_verified_at?->format('M j, Y g:i A')),
-                        TextEntry::make('pending_email')->label('Pending email change')
-                            ->visible(fn (Customer $record): bool => filled($record->pending_email))
-                            ->helperText('Waiting for the customer to confirm this address.'),
-                        IconEntry::make('password')->label('Portal password set')
-                            ->state(fn (Customer $record): bool => $record->password !== null)
-                            ->boolean(),
-                        TextEntry::make('last_login_at')->label('Last login')->dateTime('M j, Y g:i A')->placeholder('Never logged in'),
-                        TextEntry::make('created_at')->label('Account created')->dateTime('M j, Y g:i A'),
-                    ]),
-                Section::make('Contact')
-                    ->columnSpanFull()
-                    ->schema([
-                        TextEntry::make('email')->copyable(),
-                        TextEntry::make('phone')->label('Mobile')->copyable()->placeholder('—'),
-                        TextEntry::make('whatsapp_number')->label('WhatsApp')->placeholder('—'),
-                        TextEntry::make('preferred_contact_method')->label('Preferred contact')->placeholder('—'),
-                        TextEntry::make('address')->placeholder('—')->columnSpan(2),
-                        TextEntry::make('emergency_contact_name')->label('Emergency contact')->placeholder('—')
-                            ->helperText(fn (Customer $record): ?string => collect([$record->emergency_contact_relationship, $record->emergency_contact_phone])->filter()->implode(' · ') ?: null),
-                    ])
-                    ->columns(3),
-                Section::make('Travel preferences')
-                    ->columnSpanFull()
-                    ->schema([
-                        TextEntry::make('travel_interests')->badge()->placeholder('—'),
-                        TextEntry::make('preferred_activity')->label('Preferred trek / activity')->placeholder('—'),
-                        TextEntry::make('dietary_preferences')->placeholder('—'),
-                        TextEntry::make('special_requirements')->placeholder('—'),
-                        TextEntry::make('notes')->placeholder('—')->columnSpanFull(),
-                    ])
-                    ->columns(2),
-                Section::make('Special dates')
-                    ->columnSpanFull()
-                    ->schema([
-                        RepeatableEntry::make('specialDates')
-                            ->hiddenLabel()
-                            ->schema([
-                                TextEntry::make('type')->badge(),
-                                TextEntry::make('label')->placeholder('—'),
-                                TextEntry::make('date')->date('M j, Y'),
-                                TextEntry::make('remind_days_before')->label('Reminder')
-                                    ->state(fn ($record): string => $record->remind ? ($record->remind_days_before ?? 0).' day(s) before' : 'Off'),
-                            ])
-                            ->columns(4)
-                            ->contained(false),
-                    ])
-                    ->visible(fn (Customer $record): bool => $record->specialDates->isNotEmpty()),
-                Section::make('Relationship summary')
-                    ->columnSpanFull()
-                    ->schema([
-                        TextEntry::make('leads_count')->label('Leads')->state(fn (Customer $record): int => $record->leads()->count()),
                         TextEntry::make('bookings_count')->label('Bookings')->state(fn (Customer $record): int => $record->bookings()->count()),
                         TextEntry::make('invoices_count')->label('Invoices')->state(fn (Customer $record): int => $record->invoices()->count()),
+                        TextEntry::make('leads_count')->label('Leads')->state(fn (Customer $record): int => $record->leads()->count()),
+                        TextEntry::make('created_at')->label('Customer since')->date('M j, Y'),
                     ])
-                    ->columns(3),
+                    ->columns(['default' => 2, 'md' => 5]),
+                Tabs::make('Customer')
+                    ->vertical()
+                    ->persistTabInQueryString()
+                    ->columnSpanFull()
+                    ->tabs([
+                        Tab::make('Profile details')
+                            ->icon('heroicon-o-user-circle')
+                            ->schema([
+                                Section::make('Profile details')
+                                    ->schema([
+                                        TextEntry::make('name'),
+                                        TextEntry::make('type')->badge()->formatStateUsing(fn (string $state): string => str($state)->replace('_', ' ')->title()),
+                                        TextEntry::make('date_of_birth')->label('Date of birth')->date('M j, Y')->placeholder('—'),
+                                        TextEntry::make('nationality.nationality')->label('Nationality')->placeholder('—'),
+                                        TextEntry::make('countryOfResidence.name')->label('Country of residence')->placeholder('—'),
+                                        TextEntry::make('preferred_language')->placeholder('—'),
+                                    ])
+                                    ->columns(3),
+                            ]),
+                        Tab::make('Contact')
+                            ->icon('heroicon-o-phone')
+                            ->schema([
+                                Section::make('Contact')
+                                    ->schema([
+                                        TextEntry::make('email')->copyable(),
+                                        TextEntry::make('phone')->label('Mobile')->copyable()->placeholder('—'),
+                                        TextEntry::make('whatsapp_number')->label('WhatsApp')->placeholder('—'),
+                                        TextEntry::make('preferred_contact_method')->label('Preferred contact')->placeholder('—'),
+                                        TextEntry::make('address')->placeholder('—')->columnSpan(2),
+                                    ])
+                                    ->columns(3),
+                                Section::make('Emergency contact')
+                                    ->schema([
+                                        TextEntry::make('emergency_contact_name')->label('Name')->placeholder('—'),
+                                        TextEntry::make('emergency_contact_phone')->label('Phone')->copyable()->placeholder('—'),
+                                        TextEntry::make('emergency_contact_relationship')->label('Relationship')->placeholder('—'),
+                                    ])
+                                    ->columns(3),
+                            ]),
+                        Tab::make('Travel preferences')
+                            ->icon('heroicon-o-globe-asia-australia')
+                            ->schema([
+                                Section::make('Travel preferences')
+                                    ->schema([
+                                        TextEntry::make('travel_interests')->badge()->placeholder('—'),
+                                        TextEntry::make('preferred_activity')->label('Preferred trek / activity')->placeholder('—'),
+                                        TextEntry::make('dietary_preferences')->placeholder('—'),
+                                        TextEntry::make('special_requirements')->placeholder('—'),
+                                    ])
+                                    ->columns(2),
+                            ]),
+                        Tab::make('Booking history')
+                            ->icon('heroicon-o-calendar-days')
+                            ->badge(fn (Customer $record): ?int => $record->bookings()->count() ?: null)
+                            ->schema([
+                                Section::make('Booking history')
+                                    ->description('Every trip booked for this customer, most recent first.')
+                                    ->schema([
+                                        RepeatableEntry::make('bookings')
+                                            ->hiddenLabel()
+                                            ->state(fn (Customer $record): Collection => $record->bookings()
+                                                ->with('fixedDeparture')
+                                                ->latest('start_date')
+                                                ->latest()
+                                                ->get())
+                                            ->table([
+                                                TableColumn::make('Trip'),
+                                                TableColumn::make('Dates'),
+                                                TableColumn::make('Pax'),
+                                                TableColumn::make('Total'),
+                                                TableColumn::make('Status'),
+                                            ])
+                                            ->schema([
+                                                TextEntry::make('trip_name')
+                                                    ->weight('medium')
+                                                    ->color('primary')
+                                                    ->url(fn (Booking $record): ?string => auth('tenant')->user()?->can('update', $record)
+                                                        ? BookingResource::getUrl('edit', ['record' => $record])
+                                                        : null),
+                                                TextEntry::make('start_date')
+                                                    ->state(fn (Booking $record): ?string => static::bookingDates($record))
+                                                    ->placeholder('—'),
+                                                TextEntry::make('pax_count'),
+                                                TextEntry::make('total_amount')
+                                                    ->money(fn (): string => auth('tenant')->user()->tenant->currency ?? 'USD', divideBy: 100),
+                                                TextEntry::make('status')
+                                                    ->badge()
+                                                    ->formatStateUsing(fn (string $state): string => str($state)->title())
+                                                    ->color(fn (string $state): string => match ($state) {
+                                                        'confirmed' => 'success',
+                                                        'ongoing' => 'info',
+                                                        'completed' => 'gray',
+                                                        'cancelled' => 'danger',
+                                                        default => 'warning',
+                                                    }),
+                                            ])
+                                            ->placeholder('No bookings yet.'),
+                                    ]),
+                            ]),
+                        Tab::make('Special dates')
+                            ->icon('heroicon-o-gift')
+                            ->schema([
+                                Section::make('Special dates')
+                                    ->description('The birthday comes from the date of birth under Profile details.')
+                                    ->schema([
+                                        RepeatableEntry::make('specialDates')
+                                            ->hiddenLabel()
+                                            ->table([
+                                                TableColumn::make('Type'),
+                                                TableColumn::make('Label'),
+                                                TableColumn::make('Date'),
+                                                TableColumn::make('Reminder'),
+                                            ])
+                                            ->schema([
+                                                TextEntry::make('type')->badge(),
+                                                TextEntry::make('label')->placeholder('—'),
+                                                TextEntry::make('date')->date('M j, Y'),
+                                                TextEntry::make('remind_days_before')
+                                                    ->state(fn ($record): string => $record->remind ? ($record->remind_days_before ?? 0).' day(s) before' : 'Off'),
+                                            ])
+                                            ->placeholder('No special dates recorded.'),
+                                    ]),
+                            ]),
+                        Tab::make('Account & access')
+                            ->icon('heroicon-o-shield-check')
+                            ->schema([
+                                Section::make('Account & access')
+                                    ->description('Travel portal login status. Use the "More" menu to send links or change status.')
+                                    ->schema([
+                                        TextEntry::make('email_verified_at')->label('Email')
+                                            ->state(fn (Customer $record): string => $record->isEmailVerified() ? 'Verified' : 'Pending verification')
+                                            ->badge()
+                                            ->color(fn (Customer $record): string => $record->isEmailVerified() ? 'success' : 'warning')
+                                            ->helperText(fn (Customer $record): ?string => $record->email_verified_at?->format('M j, Y g:i A')),
+                                        TextEntry::make('pending_email')->label('Pending email change')
+                                            ->visible(fn (Customer $record): bool => filled($record->pending_email))
+                                            ->helperText('Waiting for the customer to confirm this address.'),
+                                        IconEntry::make('password')->label('Portal password set')
+                                            ->state(fn (Customer $record): bool => $record->password !== null)
+                                            ->boolean(),
+                                        TextEntry::make('last_login_at')->label('Last login')->dateTime('M j, Y g:i A')->placeholder('Never logged in'),
+                                    ])
+                                    ->columns(3),
+                            ]),
+                        Tab::make('Notes')
+                            ->icon('heroicon-o-pencil-square')
+                            ->schema([
+                                Section::make('Internal notes')
+                                    ->description('Only visible to agency staff.')
+                                    ->schema([
+                                        TextEntry::make('notes')->hiddenLabel()->placeholder('No notes yet.'),
+                                    ]),
+                            ]),
+                    ]),
             ]);
+    }
+
+    /**
+     * A booking's trip dates as one short range, falling back to its fixed departure's dates.
+     */
+    private static function bookingDates(Booking $booking): ?string
+    {
+        $start = $booking->start_date ?? $booking->fixedDeparture?->start_date;
+        $end = $booking->end_date ?? $booking->fixedDeparture?->end_date;
+
+        if ($start === null) {
+            return null;
+        }
+
+        return $end === null || $start->isSameDay($end)
+            ? $start->format('M j, Y')
+            : $start->format('M j').' – '.$end->format('M j, Y');
     }
 
     public static function table(Table $table): Table

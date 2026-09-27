@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Enums\BookingType;
 use App\Models\Booking;
+use App\Models\BookingIncludeExclude;
 use App\Models\Customer;
 use App\Models\FixedDeparture;
 use App\Models\Lead;
@@ -54,20 +56,37 @@ class LeadConversion
                 app(FixedDepartureCapacity::class)->reserve($fixedDeparture, $lockedLead->pax_count);
             }
 
+            $package ??= $fixedDeparture?->package;
+
+            $bookingType = match (true) {
+                $fixedDeparture !== null => BookingType::FixedGroup,
+                $package !== null && $lockedLead->pax_count > 1 => BookingType::PrivateGroup,
+                default => BookingType::Individual,
+            };
+
             $booking = Booking::query()->create([
                 'lead_id' => $lockedLead->id,
                 'customer_id' => $customer->id,
                 'package_id' => $package?->id,
                 'fixed_departure_id' => $fixedDeparture?->id,
+                'booking_type' => $bookingType,
                 'trip_name' => $package?->name ?? $lockedLead->destination ?? 'Custom trip',
-                'booked_itinerary' => $this->renderPackageItineraryAsHtml($package),
+                'booked_itinerary' => $package?->itineraryHtml(),
                 'start_date' => $fixedDeparture?->start_date,
                 'end_date' => $fixedDeparture?->end_date,
+                'duration_days' => $package?->duration_days,
                 'pax_count' => $lockedLead->pax_count,
                 'status' => 'pending',
-                'total_amount' => $fixedDeparture?->price_override ?? $package?->sales_price ?? 0,
+                'per_person_price' => app(BookingPricing::class)->defaultPerPersonPrice($package, $fixedDeparture),
+                'document_requirements' => $package?->documentRequirements(),
                 'created_by_staff_id' => $staff?->id,
             ]);
+
+            if ($package !== null) {
+                BookingIncludeExclude::syncRows($booking, BookingIncludeExclude::rowsFromPackage($package));
+            }
+
+            app(BookingPricing::class)->recalculate($booking);
 
             $lockedLead->update([
                 'customer_id' => $customer->id,
@@ -76,28 +95,5 @@ class LeadConversion
 
             return $booking;
         });
-    }
-
-    /**
-     * The package's own itinerary is only ever a starting point — this booking's itinerary is
-     * free text staff can diverge from it (or write from scratch for a custom, package-less trip),
-     * so it's rendered into plain HTML here rather than kept as a structured snapshot.
-     */
-    private function renderPackageItineraryAsHtml(?Package $package): ?string
-    {
-        $days = $package?->itinerary;
-
-        if (blank($days)) {
-            return null;
-        }
-
-        return collect($days)
-            ->map(fn (array $day, int $index): string => sprintf(
-                '<p><strong>Day %d: %s</strong></p><p>%s</p>',
-                $index + 1,
-                e($day['title'] ?? ''),
-                e($day['description'] ?? ''),
-            ))
-            ->implode('');
     }
 }

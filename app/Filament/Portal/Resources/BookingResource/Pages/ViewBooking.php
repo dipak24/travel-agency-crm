@@ -4,6 +4,7 @@ namespace App\Filament\Portal\Resources\BookingResource\Pages;
 
 use App\Filament\Forms\Components\CountrySelect;
 use App\Filament\Portal\Resources\BookingResource;
+use App\Filament\Tenant\Resources\BookingResource as TenantBookingResource;
 use App\Models\Booking;
 use App\Models\BookingDocument;
 use App\Models\Service;
@@ -35,7 +36,7 @@ class ViewBooking extends ViewRecord
                 ->form([
                     Select::make('service_id')
                         ->label('Add-on service')
-                        ->options(fn (): array => Service::query()->where('is_active', true)->pluck('name', 'id')->all())
+                        ->options(fn (Booking $record): array => TenantBookingResource::serviceOptions($record->package_id))
                         ->searchable()
                         ->required(),
                     TextInput::make('quantity')->numeric()->integer()->minValue(1)->default(1)->required(),
@@ -109,17 +110,21 @@ class ViewBooking extends ViewRecord
                         ->label('Traveller')
                         ->options(fn (Booking $record): array => $record->travelers()->orderBy('name')->pluck('name', 'id')->all())
                         ->required(),
-                    Select::make('doc_type')->label('Document type')->options(BookingDocument::TYPES)->required(),
+                    Select::make('doc_type')->label('Document type')
+                        ->options(fn (Booking $record): array => array_intersect_key(BookingDocument::TYPES, array_flip([...$record->requiredDocumentTypes(), 'other'])))
+                        ->required(),
                     FileUpload::make('files')
                         ->label('Files')
                         ->disk('local')
                         ->directory('booking-documents')
                         ->visibility('private')
                         ->multiple()
+                        ->maxFiles(BookingDocument::MAX_OTHER_FILES)
                         ->required()
                         ->acceptedFileTypes(BookingDocument::ACCEPTED_MIME_TYPES)
                         ->minSize(BookingDocument::MIN_SIZE_KB)
-                        ->maxSize(BookingDocument::MAX_SIZE_KB),
+                        ->maxSize(BookingDocument::MAX_SIZE_KB)
+                        ->helperText('Select up to '.BookingDocument::MAX_OTHER_FILES.' files at once. PDF, JPG, PNG — 10 KB to 5 MB each.'),
                 ])
                 ->action(function (Booking $record, array $data): void {
                     $traveler = $record->travelers()->find($data['booking_traveler_id']);

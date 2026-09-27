@@ -21,4 +21,5 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Filament/Tenant/Resources/**,app/Filament/Resources/TenantResource* | .ai/rules/resources-filament-resources.md |
 | app/Models/**,app/Filament/Resources/** | .ai/rules/resources.md |
 | database/seeders/PermissionSeeder.php,app/Policies/BookingPolicy.php | .ai/rules/seeders-policies.md |
+| app/Services/Booking*.php,app/Filament/Tenant/Resources/BookingResource* | .ai/rules/tenant-resources.md |
 | routes/api.php,app/Http/Controllers/Api/**,app/Http/Resources/V1/** | .ai/rules/v1.md |

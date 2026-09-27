@@ -3,6 +3,7 @@
 namespace App\Http\Resources\V1;
 
 use App\Models\Package;
+use App\Models\PackageIncludeExclude;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -25,6 +26,7 @@ class PackageResource extends JsonResource
             'code' => $this->package_code,
             'name' => $this->name,
             'description' => $this->description,
+            'category' => $this->category?->value,
             'duration_days' => $this->duration_days,
             'price' => [
                 'amount' => $this->sales_price,
@@ -38,7 +40,23 @@ class PackageResource extends JsonResource
                     'description' => $day['description'] ?? null,
                 ])
                 ->all()),
+            'inclusions' => $this->whenLoaded('includeExcludeItems', fn (): array => $this->publicItemTitles(true)),
+            'exclusions' => $this->whenLoaded('includeExcludeItems', fn (): array => $this->publicItemTitles(false)),
             'departures' => FixedDepartureResource::collection($this->whenLoaded('fixedDepartures')),
         ];
+    }
+
+    /**
+     * Titles only — per-item prices are internal.
+     *
+     * @return array<int, string>
+     */
+    private function publicItemTitles(bool $included): array
+    {
+        return $this->includeExcludeItems
+            ->filter(fn (PackageIncludeExclude $item): bool => $item->is_included === $included && $item->includeExclude !== null)
+            ->map(fn (PackageIncludeExclude $item): string => $item->includeExclude->title)
+            ->values()
+            ->all();
     }
 }

@@ -3,8 +3,10 @@
 namespace App\Providers\Filament;
 
 use App\Filament\AgencyBranding;
+use App\Http\Middleware\EnsurePlatformAvailable;
 use App\Http\Middleware\ResolveAgencySubdomain;
 use App\Http\Middleware\ResolveTenant;
+use App\Services\Auth\TenantImpersonation;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -14,6 +16,7 @@ use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\Support\Enums\Width;
+use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -41,6 +44,11 @@ class TenantPanelProvider extends PanelProvider
                 'secondary' => Color::Blue,
             ])
             ->maxContentWidth(Width::Full)
+            ->renderHook(PanelsRenderHook::BODY_START, function (): string {
+                $impersonator = app(TenantImpersonation::class)->impersonator(request());
+
+                return $impersonator === null ? '' : view('filament.impersonation-banner', ['impersonator' => $impersonator])->render();
+            })
             ->discoverResources(in: app_path('Filament/Tenant/Resources'), for: 'App\Filament\Tenant\Resources')
             ->discoverPages(in: app_path('Filament/Tenant/Pages'), for: 'App\Filament\Tenant\Pages')
             ->pages([
@@ -48,6 +56,7 @@ class TenantPanelProvider extends PanelProvider
             ])
             ->discoverWidgets(in: app_path('Filament/Tenant/Widgets'), for: 'App\Filament\Tenant\Widgets')
             ->middleware([
+                EnsurePlatformAvailable::class,
                 ResolveAgencySubdomain::class,
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
@@ -64,6 +73,6 @@ class TenantPanelProvider extends PanelProvider
                 Authenticate::class,
                 ResolveTenant::class,
             ], isPersistent: true)
-            ->persistentMiddleware([ResolveAgencySubdomain::class]));
+            ->persistentMiddleware([EnsurePlatformAvailable::class, ResolveAgencySubdomain::class]));
     }
 }

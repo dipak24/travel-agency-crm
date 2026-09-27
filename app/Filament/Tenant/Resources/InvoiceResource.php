@@ -11,10 +11,12 @@ use App\Models\Customer;
 use App\Models\Invoice;
 use App\Notifications\InvoiceEmailed;
 use App\Notifications\InvoicePaymentLink;
+use App\Services\InvoicePaymentLinks;
 use App\Services\Mail\TenantMailer;
 use App\Support\Money;
 use BackedEnum;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Closure;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\EditAction;
@@ -22,6 +24,7 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Components\ViewEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -34,7 +37,6 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Throwable;
 use UnitEnum;
@@ -197,6 +199,7 @@ class InvoiceResource extends Resource
     public static function rowActions(): array
     {
         return [
+            static::copyPaymentLinkAction(),
             Action::make('downloadPdf')
                 ->label('Download PDF')
                 ->icon('heroicon-o-arrow-down-tray')
@@ -240,7 +243,7 @@ class InvoiceResource extends Resource
                 ->requiresConfirmation()
                 ->modalDescription(fn (Invoice $record): string => "Email a no-login payment link for this invoice to {$record->customer?->email}?")
                 ->action(function (Invoice $record): void {
-                    $url = URL::temporarySignedRoute('public.pay.show', now()->addDays(14), ['invoice' => $record->id]);
+                    $url = app(InvoicePaymentLinks::class)->url($record);
 
                     $sent = app(TenantMailer::class)->send($record->tenant_id, $record->customer, new InvoicePaymentLink($record, $url));
 
@@ -252,6 +255,68 @@ class InvoiceResource extends Resource
 
                     Notification::make()->title('Payment link sent')->success()->send();
                 }),
+        ];
+    }
+
+    /**
+     * A no-login payment link CST copy and send to the customer themselves (WhatsApp, SMS, chat).
+     * Disabled until the agency has a payment method the customer could use.
+     */
+    public static function copyPaymentLinkAction(): Action
+    {
+        $links = fn (): InvoicePaymentLinks => app(InvoicePaymentLinks::class);
+
+        return Action::make('copyPaymentLink')
+            ->label('Copy payment link')
+            ->icon('heroicon-o-clipboard-document')
+            ->color('success')
+            ->visible(fn (Invoice $record): bool => $record->balanceDue() > 0)
+            ->disabled(fn (Invoice $record): bool => ! $links()->canBePaidOnline($record))
+            ->tooltip(fn (Invoice $record): ?string => $links()->canBePaidOnline($record)
+                ? null
+                : 'No payment method is enabled for this agency yet — set one up in Payment settings.')
+            ->modalHeading('Payment link')
+            ->modalDescription('Send this link to the customer by WhatsApp, SMS or email. They can pay without logging in, using the payment methods enabled for your agency.')
+            ->modalIcon('heroicon-o-link')
+            ->schema(fn (Invoice $record): array => static::paymentLinkFields(fn (): ?Invoice => $record))
+            ->modalSubmitAction(false)
+            ->modalCancelActionLabel('Close');
+    }
+
+    /**
+     * The link and a ready-to-send message for the invoice `$invoice` resolves to, regenerated
+     * when CST change how long it stays valid.
+     *
+     * @param  Closure(Get): ?Invoice  $invoice
+     * @return array<int, Select|TextEntry>
+     */
+    public static function paymentLinkFields(Closure $invoice): array
+    {
+        $links = fn (): InvoicePaymentLinks => app(InvoicePaymentLinks::class);
+        $days = fn (Get $get): int => (int) ($get('link_valid_days') ?: InvoicePaymentLinks::DEFAULT_DAYS);
+        $url = fn (Get $get): ?string => ($record = $invoice($get)) ? $links()->url($record, $days($get)) : null;
+
+        return [
+            Select::make('link_valid_days')
+                ->label('Link valid for')
+                ->options(InvoicePaymentLinks::EXPIRY_OPTIONS)
+                ->default(InvoicePaymentLinks::DEFAULT_DAYS)
+                ->selectablePlaceholder(false)
+                ->live(),
+            TextEntry::make('payment_link')
+                ->label('Payment link')
+                ->state($url)
+                ->helperText(fn (Get $get): string => 'Expires '.$links()->expiresAt($days($get))->format('j M Y').'. Click to copy.')
+                ->copyable()
+                ->copyMessage('Payment link copied')
+                ->fontFamily('mono')
+                ->placeholder('Choose an invoice'),
+            TextEntry::make('payment_message')
+                ->label('Message to send')
+                ->state(fn (Get $get): ?string => ($record = $invoice($get)) ? $links()->shareMessage($record, $url($get), $days($get)) : null)
+                ->helperText('Click to copy, then paste into WhatsApp, SMS or email.')
+                ->copyable()
+                ->copyMessage('Message copied'),
         ];
     }
 

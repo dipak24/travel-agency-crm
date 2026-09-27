@@ -2,9 +2,12 @@
 
 namespace App\Models;
 
+use App\Enums\BookingType;
+use App\Enums\DocumentType;
 use App\Models\Concerns\BelongsToTenant;
 use App\Notifications\BookingStatusChanged;
 use App\Services\Mail\TenantMailer;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -15,7 +18,7 @@ use Spatie\Activitylog\Support\LogOptions;
 
 class Booking extends Model
 {
-    use BelongsToTenant, LogsActivity, SoftDeletes;
+    use BelongsToTenant, HasFactory, LogsActivity, SoftDeletes;
 
     protected static function booted(): void
     {
@@ -32,6 +35,9 @@ class Booking extends Model
         'tenant_id', 'lead_id', 'customer_id', 'package_id', 'fixed_departure_id',
         'trip_name', 'booked_itinerary', 'description', 'start_date', 'end_date',
         'pax_count', 'status', 'total_amount', 'created_by_staff_id', 'customer_notes',
+        'booking_type', 'duration_days', 'per_person_price', 'base_amount', 'group_discount_tier_id',
+        'group_discount_amount', 'inclusions_adjustment', 'addons_amount', 'manual_adjustment',
+        'manual_adjustment_reason', 'document_requirements',
     ];
 
     protected function casts(): array
@@ -41,6 +47,15 @@ class Booking extends Model
             'end_date' => 'date',
             'pax_count' => 'integer',
             'total_amount' => 'integer',
+            'booking_type' => BookingType::class,
+            'duration_days' => 'integer',
+            'per_person_price' => 'integer',
+            'base_amount' => 'integer',
+            'group_discount_amount' => 'integer',
+            'inclusions_adjustment' => 'integer',
+            'addons_amount' => 'integer',
+            'manual_adjustment' => 'integer',
+            'document_requirements' => 'array',
         ];
     }
 
@@ -102,6 +117,32 @@ class Booking extends Model
     public function includeExcludes(): HasMany
     {
         return $this->hasMany(BookingIncludeExclude::class);
+    }
+
+    public function groupDiscountTier(): BelongsTo
+    {
+        return $this->belongsTo(GroupDiscountTier::class);
+    }
+
+    /**
+     * Required/optional flag per document type for this booking: the booking's own copy (which CST
+     * can change), else the package's, else the platform defaults.
+     *
+     * @return array<string, bool>
+     */
+    public function documentRequirements(): array
+    {
+        $base = $this->package?->documentRequirements() ?? DocumentType::defaultRequirements();
+
+        return DocumentType::normalizeRequirements(array_merge($base, array_map('boolval', $this->document_requirements ?? [])));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function requiredDocumentTypes(): array
+    {
+        return array_keys(array_filter($this->documentRequirements()));
     }
 
     public function getActivitylogOptions(): LogOptions

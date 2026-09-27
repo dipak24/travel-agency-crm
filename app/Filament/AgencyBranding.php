@@ -23,8 +23,36 @@ class AgencyBranding
         return $panel
             ->brandName(fn (): string => static::agency()?->name ?? config('app.name'))
             ->brandLogo(fn (): ?string => static::publicUrl(static::agency()?->logo))
+            // 'auto' instead of Filament's fixed 1.5rem: the logo keeps its own size (see logoStyles()).
+            ->brandLogoHeight('auto')
             ->favicon(fn (): ?string => static::publicUrl(static::agency()?->favicon))
-            ->renderHook(PanelsRenderHook::HEAD_END, fn (): string => static::colorStyles());
+            ->renderHook(PanelsRenderHook::HEAD_END, fn (): string => static::logoStyles().static::headingStyles().static::colorStyles());
+    }
+
+    /**
+     * One page-heading size on every screen: Filament's default grows the heading from 1.5rem/700
+     * to 1.875rem on wider screens, which made page titles look inconsistent next to each other.
+     */
+    private static function headingStyles(): string
+    {
+        return '<style>'
+            .'.fi-header-heading{font-size:1.5rem;line-height:2rem;font-weight:600}'
+            .'</style>';
+    }
+
+    /**
+     * The logo is shown at its own natural width and height — never cropped, stretched or boxed
+     * into a fixed size — so horizontal and vertical logos both keep their real shape. It only
+     * shrinks (proportionally) if it's wider than the space it's in. Without a logo, Filament
+     * shows the business name instead, kept to one line in the header.
+     */
+    private static function logoStyles(): string
+    {
+        return '<style>'
+            .'img.fi-logo{width:auto;height:auto;max-width:100%}'
+            .'.fi-sidebar-header div.fi-logo,.fi-topbar div.fi-logo{display:block;max-width:14rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+            .'.fi-simple-header div.fi-logo{text-align:center}'
+            .'</style>';
     }
 
     public static function agency(): ?Tenant

@@ -6,6 +6,7 @@ use App\Enums\ContactMethod;
 use App\Enums\CustomerStatus;
 use App\Models\Concerns\BelongsToTenant;
 use App\Support\AgencySubdomain;
+use App\Support\PlanFeatures;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasAvatar;
 use Filament\Panel;
@@ -121,7 +122,8 @@ class Customer extends Authenticatable implements FilamentUser, HasAvatar
         return $panel->getId() === 'portal'
             && $this->status->allowsPortalAccess()
             && ($agency === null || $agency->getKey() === $this->tenant_id)
-            && $this->tenant?->status !== 'suspended';
+            && $this->tenant?->status !== 'suspended'
+            && PlanFeatures::allows($this->tenant, PlanFeatures::CUSTOMER_PORTAL);
     }
 
     public function getFilamentAvatarUrl(): ?string

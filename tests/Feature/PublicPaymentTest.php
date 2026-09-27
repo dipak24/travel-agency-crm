@@ -62,7 +62,7 @@ test('a validly signed public pay link shows the invoice and only enabled gatewa
 
     $this->get($url)
         ->assertOk()
-        ->assertSee('Pay via PayPal');
+        ->assertSee('Pay USD 500.00 via PayPal');
 });
 
 test('a signed public pay link past its expiry is refused', function () {
@@ -149,4 +149,33 @@ test('the public return page reflects success, pending, and failure without need
     $this->get(route('public.pay.return', ['gateway' => 'hbl', 'invoice' => $invoice->id]).'?status=success&orderNo=NOTFOUNDYET')
         ->assertRedirect()
         ->assertSessionHas('payment_pending');
+});
+
+test('the public pay page shows the trip, the invoice lines, what was already paid and who is being paid', function () {
+    $tenant = publicPayTenant('Northwind Travel', 'northwind-travel');
+    $tenant->update(['address' => 'Thamel, Kathmandu', 'phone_number' => '+977 1 4000000', 'billing_email' => 'accounts@northwind.test']);
+    app(TenantContext::class)->set($tenant);
+    $customer = Customer::factory()->create(['name' => 'Asha Gurung']);
+    $booking = Booking::query()->create([
+        'customer_id' => $customer->id, 'trip_name' => 'Everest Base Camp Trek', 'pax_count' => 2,
+        'start_date' => '2026-11-10', 'end_date' => '2026-11-23', 'duration_days' => 14,
+    ]);
+    $invoice = Invoice::query()->create([
+        'booking_id' => $booking->id, 'customer_id' => $customer->id,
+        'amount' => 280000, 'total' => 280000, 'currency' => 'USD', 'status' => 'partially_paid', 'due_date' => '2026-10-20',
+    ]);
+    $invoice->items()->create(['description' => 'Package price (1,400.00 × 2 people)', 'qty' => 1, 'unit_price' => 280000, 'total' => 280000]);
+    $invoice->payments()->create(['amount' => 80000, 'currency' => 'USD', 'method' => 'bank_transfer', 'type' => 'installment', 'status' => 'completed', 'paid_at' => '2026-09-20', 'transaction_ref' => 'DEP-1']);
+
+    $url = URL::temporarySignedRoute('public.pay.show', now()->addDays(14), ['invoice' => $invoice->id]);
+
+    $this->get($url)
+        ->assertOk()
+        ->assertSeeInOrder(['Amount due', 'USD 2,000.00', 'Trip details', 'Everest Base Camp Trek', 'Tue, 10 Nov 2026', 'Mon, 23 Nov 2026', '14 days / 13 nights', '2 people'])
+        ->assertSee('Package price (1,400.00 × 2 people)')
+        ->assertSee('Bank Transfer')
+        ->assertSee('Pay to')
+        ->assertSee('Thamel, Kathmandu')
+        ->assertSee('accounts@northwind.test')
+        ->assertSee('valid until');
 });

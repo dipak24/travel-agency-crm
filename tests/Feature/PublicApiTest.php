@@ -3,8 +3,10 @@
 use App\Models\BookingWaitlist;
 use App\Models\Customer;
 use App\Models\FixedDeparture;
+use App\Models\IncludeExclude;
 use App\Models\Lead;
 use App\Models\Package;
+use App\Models\PackageIncludeExclude;
 use App\Models\Tenant;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -258,4 +260,23 @@ test('public submissions are rate limited per IP', function () {
     }
 
     $this->postJson('/api/v1/inquiries?tenant=himalaya', publicApiContact())->assertTooManyRequests();
+});
+
+test('the package detail lists its category and inclusion/exclusion titles without their prices', function () {
+    $tenant = publicApiTenant('himalaya');
+    $package = publicApiPackage($tenant, 'everest-base-camp');
+
+    app(TenantContext::class)->wrap($tenant, function () use ($package): void {
+        $hotel = IncludeExclude::factory()->create(['title' => 'Hotel in Kathmandu', 'unit_price' => 4500]);
+        $porter = IncludeExclude::factory()->exclude()->create(['title' => 'Porter']);
+        PackageIncludeExclude::query()->create(['package_id' => $package->id, 'include_exclude_id' => $hotel->id, 'is_included' => true]);
+        PackageIncludeExclude::query()->create(['package_id' => $package->id, 'include_exclude_id' => $porter->id, 'is_included' => false]);
+    });
+
+    $this->getJson('/api/v1/packages/everest-base-camp?tenant=himalaya')
+        ->assertOk()
+        ->assertJsonPath('data.category', 'trek')
+        ->assertJsonPath('data.inclusions', ['Hotel in Kathmandu'])
+        ->assertJsonPath('data.exclusions', ['Porter'])
+        ->assertJsonMissingPath('data.inclusions.0.unit_price');
 });

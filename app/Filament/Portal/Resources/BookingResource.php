@@ -7,6 +7,7 @@ use App\Models\Booking;
 use App\Models\BookingDocument;
 use App\Models\BookingIncludeExclude;
 use App\Models\BookingTraveler;
+use App\Services\BookingPricing;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
@@ -22,6 +23,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
 
 class BookingResource extends Resource
 {
@@ -87,6 +89,17 @@ class BookingResource extends Resource
                 ])
                 ->columns(3)
                 ->columnSpanFull(),
+            Section::make('Price breakdown')
+                ->key('price')
+                ->schema([
+                    TextEntry::make('price_breakdown')
+                        ->hiddenLabel()
+                        ->state(fn (Booking $record): HtmlString => app(BookingPricing::class)->quoteFor($record)->toHtml($record->tenant?->currency ?? 'USD'))
+                        ->html(),
+                ])
+                ->visible(fn (Booking $record): bool => $record->per_person_price > 0)
+                ->collapsible()
+                ->columnSpanFull(),
             Section::make('Itinerary')
                 ->schema([
                     TextEntry::make('booked_itinerary')->label('')->html(),
@@ -123,7 +136,7 @@ class BookingResource extends Resource
             // remove or replace a document staff are reviewing or have approved.
             Section::make('Travel documents')
                 ->key('documents')
-                ->description('Upload one file (or several) per document type. '.BookingDocument::UPLOAD_RULES_HINT)
+                ->description('Upload the documents your trip requires — one file (or several) per document type. '.BookingDocument::UPLOAD_RULES_HINT)
                 ->schema(collect(BookingDocument::TYPES)
                     ->map(fn (string $label, string $docType): Section => static::documentTypeCard($docType, $label))
                     ->values()
@@ -197,8 +210,11 @@ class BookingResource extends Resource
             ->whereNull('booking_traveler_id')
             ->values();
 
-        return Section::make($label)
+        return Section::make($docType === 'other' ? "{$label} (optional, max ".BookingDocument::MAX_OTHER_FILES.' files)' : $label)
             ->key("documents-{$docType}")
+            ->visible(fn (Booking $record): bool => $docType === 'other'
+                || in_array($docType, $record->requiredDocumentTypes(), true)
+                || $documentsOfType($record)->isNotEmpty())
             ->compact()
             ->description(fn (Booking $record): string => static::documentTypeSummary($documentsOfType($record)))
             ->afterHeader([static::uploadDocumentsAction($docType, $label)])
@@ -247,12 +263,17 @@ class BookingResource extends Resource
 
     public static function uploadDocumentsAction(string $docType, string $label): Action
     {
+        $isOther = $docType === 'other';
+
         return Action::make("upload_{$docType}")
             ->label('Upload')
             ->icon('heroicon-o-arrow-up-tray')
             ->size('sm')
+            ->visible(fn (Booking $record): bool => ! $isOther || BookingDocument::otherFilesRemaining($record) > 0)
             ->modalHeading("Upload {$label}")
-            ->modalDescription('You can upload one file or several. '.BookingDocument::UPLOAD_RULES_HINT)
+            ->modalDescription(fn (Booking $record): string => $isOther
+                ? 'Optional extra documents. You can add '.BookingDocument::otherFilesRemaining($record).' more file(s) (max '.BookingDocument::MAX_OTHER_FILES.' in total). '.BookingDocument::UPLOAD_RULES_HINT
+                : BookingDocument::UPLOAD_RULES_HINT)
             ->modalSubmitActionLabel('Upload')
             ->form([
                 FileUpload::make('files')
@@ -261,11 +282,14 @@ class BookingResource extends Resource
                     ->directory('booking-documents')
                     ->visibility('private')
                     ->multiple()
+                    ->maxFiles(fn (Booking $record): ?int => $isOther ? max(1, BookingDocument::otherFilesRemaining($record)) : null)
                     ->required()
                     ->acceptedFileTypes(BookingDocument::ACCEPTED_MIME_TYPES)
                     ->minSize(BookingDocument::MIN_SIZE_KB)
                     ->maxSize(BookingDocument::MAX_SIZE_KB)
-                    ->helperText('Max 5 MB, min 10 KB per file.'),
+                    ->helperText($isOther
+                        ? BookingDocument::OTHER_UPLOAD_HINT
+                        : 'Select one or several files. PDF, JPG, PNG — 10 KB to 5 MB each.'),
             ])
             ->action(function (Booking $record, array $data) use ($docType, $label): void {
                 $added = BookingDocument::addCustomerUploads($record, [$docType => $data['files'] ?? []], auth('customer')->user()->email);
