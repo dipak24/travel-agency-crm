@@ -9,8 +9,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LogicException;
 
 /**
- * One catalog inclusion/exclusion item on a package. `is_included` items are covered by the
+ * One catalog inclusion/exclusion item picked for a package. `is_included` items are covered by the
  * package's base price; the rest are listed as excluded but can be added to a booking for a charge.
+ * Title, description and unit always come from the catalog item; `unit_price` is the package's own
+ * price, copied from the catalog when the item is picked, so later catalog price changes don't
+ * change the package.
  */
 class PackageIncludeExclude extends Model
 {
@@ -27,6 +30,10 @@ class PackageIncludeExclude extends Model
             }
         });
 
+        static::creating(function (self $item): void {
+            $item->unit_price ??= (int) IncludeExclude::query()->whereKey($item->include_exclude_id)->value('unit_price');
+        });
+
         $flushPublicCatalog = fn (self $item) => app(PublicCatalogCache::class)->flush($item->tenant_id);
 
         static::saved($flushPublicCatalog);
@@ -34,14 +41,14 @@ class PackageIncludeExclude extends Model
     }
 
     protected $fillable = [
-        'tenant_id', 'package_id', 'include_exclude_id', 'is_included', 'unit_price_override', 'sort_order',
+        'tenant_id', 'package_id', 'include_exclude_id', 'is_included', 'unit_price', 'sort_order',
     ];
 
     protected function casts(): array
     {
         return [
             'is_included' => 'boolean',
-            'unit_price_override' => 'integer',
+            'unit_price' => 'integer',
             'sort_order' => 'integer',
         ];
     }
@@ -59,10 +66,5 @@ class PackageIncludeExclude extends Model
     public function includeExclude(): BelongsTo
     {
         return $this->belongsTo(IncludeExclude::class);
-    }
-
-    public function unitPrice(): int
-    {
-        return $this->unit_price_override ?? $this->includeExclude?->unit_price ?? 0;
     }
 }

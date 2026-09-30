@@ -26,13 +26,11 @@ class PackageFactory extends Factory
             'slug' => Str::slug($name),
             'package_code' => strtoupper(fake()->unique()->bothify('PKG-####')),
             'description' => fake()->sentence(),
-            'itinerary' => [],
+            'itinerary' => null,
             'base_price' => 80000,
             'sales_price' => 100000,
             'duration_days' => 12,
             'category' => PackageCategory::Trek,
-            'min_pax' => 1,
-            'is_public' => true,
             'status' => 'published',
         ];
     }

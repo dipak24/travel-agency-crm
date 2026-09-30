@@ -7,6 +7,7 @@ use App\Models\BookingDocument;
 use App\Models\BookingIncludeExclude;
 use App\Models\Customer;
 use App\Models\IncludeExclude;
+use App\Models\Service;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Support\TenantContext;
@@ -125,4 +126,49 @@ test('the itinerary rich text is saved as-is and survives editing without any st
 
     Livewire::actingAs($owner, 'tenant')->test(EditBooking::class, ['record' => $booking->getRouteKey()])
         ->assertOk();
+});
+
+test('CST can add catalog items at their own price and custom lines to a booking\'s inclusions and add-ons', function () {
+    test()->seed();
+    $owner = TenantUser::query()->withoutGlobalScopes()->where('email', 'staff@example.com')->firstOrFail();
+    app(TenantContext::class)->set($owner->tenant);
+    $customer = Customer::factory()->create();
+    $porter = IncludeExclude::query()->create(['type' => 'exclude', 'title' => 'Porter', 'unit_price' => 2000, 'pricing_unit' => 'per_day']);
+    $skydiving = Service::factory()->create(['name' => 'Skydiving', 'price' => 40000]);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(CreateBooking::class)
+        ->set('data.customer_id', $customer->id)
+        ->set('data.trip_name', 'Custom Trek')
+        ->set('data.start_date', now()->addMonth()->toDateString())
+        ->set('data.duration_days', 3)
+        ->set('data.pax_count', 2)
+        ->set('data.per_person_price', '100.00')
+        ->set('data.status', 'pending')
+        ->set('data.inclusion_rows', [
+            'row-0' => ['include_exclude_id' => null, 'title' => 'Welcome dinner', 'selected' => true, 'unit_price' => '20.00', 'pricing_unit' => 'per_person', 'default_included' => null],
+        ])
+        ->set('data.exclusion_rows', [
+            'row-0' => ['include_exclude_id' => $porter->id, 'title' => 'Renamed porter', 'selected' => true, 'unit_price' => '15.00', 'pricing_unit' => 'per_trip', 'default_included' => null],
+        ])
+        ->set('data.addons', [
+            'a' => ['service_id' => null, 'name' => 'Photo package', 'quantity' => 1, 'unit_price' => '50.00', 'price' => '50.00', 'status' => 'approved'],
+            'b' => ['service_id' => $skydiving->id, 'name' => 'Tampered name', 'quantity' => 2, 'unit_price' => '400.00', 'price' => '800.00', 'status' => 'approved'],
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $booking = Booking::query()->where('trip_name', 'Custom Trek')->sole();
+
+    expect($booking->includeExcludes()->orderBy('sort_order')->get()->map->only(['include_exclude_id', 'title', 'pricing_unit', 'unit_price'])->map(fn (array $row): array => [...$row, 'pricing_unit' => $row['pricing_unit']->value])->all())->toBe([
+        ['include_exclude_id' => null, 'title' => 'Welcome dinner', 'pricing_unit' => 'per_person', 'unit_price' => 2000],
+        ['include_exclude_id' => $porter->id, 'title' => 'Porter', 'pricing_unit' => 'per_day', 'unit_price' => 1500],
+    ])
+        ->and($booking->addons()->orderBy('id')->get()->map->only(['service_id', 'name', 'price'])->all())->toBe([
+            ['service_id' => null, 'name' => 'Photo package', 'price' => 5000],
+            ['service_id' => $skydiving->id, 'name' => 'Skydiving', 'price' => 80000],
+        ])
+        // 2 × 100 + dinner 20 × 2 + porter 15 × 3 days + add-ons 50 + 800
+        ->and($booking->refresh()->total_amount)->toBe(20000 + 4000 + 4500 + 5000 + 80000);
 });

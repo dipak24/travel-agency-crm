@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\DocumentType;
 use App\Enums\PackageCategory;
 use App\Models\Concerns\BelongsToTenant;
 use App\Services\PublicCatalogCache;
@@ -26,22 +25,16 @@ class Package extends Model
 
     protected $fillable = [
         'tenant_id', 'name', 'slug', 'package_code', 'description', 'itinerary',
-        'base_price', 'sales_price', 'duration_days', 'is_public', 'status',
-        'category', 'min_pax', 'max_pax', 'document_requirements',
+        'base_price', 'sales_price', 'duration_days', 'status', 'category',
     ];
 
     protected function casts(): array
     {
         return [
-            'itinerary' => 'array',
             'base_price' => 'integer',
             'sales_price' => 'integer',
-            'is_public' => 'boolean',
             'duration_days' => 'integer',
-            'min_pax' => 'integer',
-            'max_pax' => 'integer',
             'category' => PackageCategory::class,
-            'document_requirements' => 'array',
         ];
     }
 
@@ -84,7 +77,7 @@ class Package extends Model
 
     public function services(): BelongsToMany
     {
-        return $this->belongsToMany(Service::class)->withPivot(['price_override', 'is_featured']);
+        return $this->belongsToMany(Service::class)->withPivot(['price', 'is_featured']);
     }
 
     public function promoCodes(): BelongsToMany
@@ -93,33 +86,19 @@ class Package extends Model
     }
 
     /**
-     * The package itinerary as simple HTML, used as the starting point for a booking's own
-     * free-text itinerary (which CST can then change for that booking only).
+     * Only published packages appear on the agency's public website and booking pages.
      */
-    public function itineraryHtml(): ?string
+    public function isPublished(): bool
     {
-        if (blank($this->itinerary)) {
-            return null;
-        }
-
-        return collect($this->itinerary)
-            ->map(fn (array $day, int $index): string => sprintf(
-                '<p><strong>Day %d: %s</strong></p><p>%s</p>',
-                $index + 1,
-                e($day['title'] ?? ''),
-                e($day['description'] ?? ''),
-            ))
-            ->implode('');
+        return $this->status === 'published';
     }
 
     /**
-     * Required/optional flag per document type, falling back to the platform defaults for any
-     * type the package hasn't set.
-     *
-     * @return array<string, bool>
+     * The package itinerary (free-text HTML), used as the starting point for a booking's own
+     * itinerary (which CST can then change for that booking only).
      */
-    public function documentRequirements(): array
+    public function itineraryHtml(): ?string
     {
-        return DocumentType::normalizeRequirements(array_merge(DocumentType::defaultRequirements(), array_map('boolval', $this->document_requirements ?? [])));
+        return blank($this->itinerary) ? null : $this->itinerary;
     }
 }

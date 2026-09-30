@@ -174,3 +174,26 @@ test('the public API resolves an agency by its custom domain only once verified'
         ->assertJsonPath('data.custom_domain', 'trips.example.org')
         ->assertJsonPath('data.url', 'https://trips.example.org');
 });
+
+test('the settings show the departures widget code, and the marketing website must be an http(s) link', function () {
+    $this->seed();
+    $owner = websiteOwner();
+    $this->actingAsStaff($owner);
+
+    Livewire::actingAs($owner, 'tenant')->test(WebsiteSettings::class)
+        ->assertSee('data-crm-departures')
+        ->assertSee(portalUrl($owner->tenant, '/js/departures-widget.js'))
+        ->set('data.contact_settings.website_url', 'javascript:alert(1)')
+        ->call('save')
+        ->assertHasFormErrors(['contact_settings.website_url'])
+        ->set('data.contact_settings.website_url', 'https://www.demo-travel.test')
+        ->set('data.contact_settings.terms_url', 'javascript:alert(1)')
+        ->call('save')
+        ->assertHasFormErrors(['contact_settings.terms_url'])
+        ->set('data.contact_settings.terms_url', 'https://www.demo-travel.test/terms')
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect(PublicLeadPage::query()->withoutGlobalScopes()->sole()->contact_settings)
+        ->toMatchArray(['website_url' => 'https://www.demo-travel.test', 'terms_url' => 'https://www.demo-travel.test/terms']);
+});

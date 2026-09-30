@@ -126,15 +126,13 @@ class Booking extends Model
 
     /**
      * Required/optional flag per document type for this booking: the booking's own copy (which CST
-     * can change), else the package's, else the platform defaults.
+     * can change), else the platform defaults.
      *
      * @return array<string, bool>
      */
     public function documentRequirements(): array
     {
-        $base = $this->package?->documentRequirements() ?? DocumentType::defaultRequirements();
-
-        return DocumentType::normalizeRequirements(array_merge($base, array_map('boolval', $this->document_requirements ?? [])));
+        return DocumentType::normalizeRequirements(array_merge(DocumentType::defaultRequirements(), array_map('boolval', $this->document_requirements ?? [])));
     }
 
     /**

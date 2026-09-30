@@ -5,6 +5,7 @@ namespace App\Filament\Tenant\Pages;
 use App\Models\PublicLeadPage;
 use App\Services\CustomDomainVerifier;
 use App\Support\AgencySubdomain;
+use App\Support\PublicBookingLinks;
 use App\Support\TenantContext;
 use BackedEnum;
 use Closure;
@@ -14,6 +15,7 @@ use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
@@ -58,10 +60,11 @@ class WebsiteSettings extends Page
             'is_active' => $page?->is_active ?? false,
             'theme' => array_merge(['template' => 'classic', 'accent_color' => null, 'hero_title' => null, 'hero_subtitle' => null], $page?->theme ?? []),
             'contact_settings' => array_merge(
-                ['email' => null, 'phone' => null, 'whatsapp' => null, 'address' => null, 'facebook_url' => null, 'instagram_url' => null],
+                ['website_url' => null, 'terms_url' => null, 'email' => null, 'phone' => null, 'whatsapp' => null, 'address' => null, 'facebook_url' => null, 'instagram_url' => null],
                 $page?->contact_settings ?? [],
             ),
             'custom_domain' => $page?->custom_domain,
+            'booking_settings' => ($page ?? new PublicLeadPage)->bookingSettings(),
         ]);
     }
 
@@ -108,12 +111,57 @@ class WebsiteSettings extends Page
             Section::make('Contact details')
                 ->description('Shown on your website\'s contact section and footer.')
                 ->schema([
+                    TextInput::make('contact_settings.website_url')->label('Marketing website')
+                        ->url()->regex('/^https?:\/\//i')->maxLength(255)
+                        ->placeholder('https://www.youragency.com')
+                        ->helperText('Your main website. Your logo on the booking pages links back to it.')
+                        ->columnSpanFull(),
+                    TextInput::make('contact_settings.terms_url')->label('Terms & conditions page')
+                        ->url()->regex('/^https?:\/\//i')->maxLength(255)
+                        ->placeholder('https://www.youragency.com/terms-and-conditions')
+                        ->helperText('The booking and gift voucher pages link "terms and conditions" to this page on your marketing site.')
+                        ->columnSpanFull(),
                     TextInput::make('contact_settings.email')->label('Email')->email()->maxLength(255),
                     TextInput::make('contact_settings.phone')->label('Phone')->tel()->maxLength(50),
                     TextInput::make('contact_settings.whatsapp')->label('WhatsApp')->tel()->maxLength(50),
                     TextInput::make('contact_settings.address')->label('Address')->maxLength(255),
                     TextInput::make('contact_settings.facebook_url')->label('Facebook page')->url()->maxLength(255),
                     TextInput::make('contact_settings.instagram_url')->label('Instagram profile')->url()->maxLength(255),
+                ])
+                ->columns(2),
+            Section::make('Online booking & gift vouchers')
+                ->description(fn (): HtmlString => new HtmlString(
+                    'Booking pages on your agency address where travellers book and pay without an account. Link to them from your marketing site; they are live only while the website is published. '
+                    .'Copy the exact link for a package or departure from its "Booking link" action.<br>'
+                    .collect([
+                        'Choose any trip and book' => '/book',
+                        'Book a package on own dates' => '/book/{package-code}?start_date=YYYY-MM-DD&pax=2',
+                        'Join a group departure' => '/departures/{id}/join?pax=2',
+                        'All group departures' => '/departures',
+                        'Gift vouchers' => '/gift-vouchers',
+                    ])
+                        ->map(fn (string $path, string $label): string => $label.': <code>'.e(AgencySubdomain::url(auth('tenant')->user()->tenant, $path)).'</code>')
+                        ->implode('<br>')
+                ))
+                ->schema([
+                    Toggle::make('booking_settings.trip_booking')->label('Trip booking')
+                        ->helperText('Travellers book a package on their own dates (private group or individual) from its booking link.'),
+                    Toggle::make('booking_settings.group_joining')->label('Group departure joining')
+                        ->helperText('Travellers join a fixed departure and take seats.'),
+                    Toggle::make('booking_settings.gift_vouchers')->label('Gift voucher purchase'),
+                    TextInput::make('booking_settings.deposit_percent')
+                        ->label('Deposit to book')
+                        ->numeric()->integer()->minValue(1)->maxValue(100)->required()
+                        ->suffix('%')
+                        ->helperText('Charged when a traveller books online. 100% takes the full price; send the balance later with a payment link.'),
+                    TextEntry::make('departures_widget')
+                        ->label('Group departures widget')
+                        ->state(fn (): string => PublicBookingLinks::widgetSnippet(auth('tenant')->user()->tenant))
+                        ->helperText('Paste into any page of your marketing site to list your upcoming departures with a Book button. Add data-package="{package-code}" for one package, data-pax="2" to pre-fill travellers. Click to copy.')
+                        ->copyable()
+                        ->copyMessage('Widget code copied')
+                        ->fontFamily('mono')
+                        ->columnSpanFull(),
                 ])
                 ->columns(2),
             Section::make('Custom domain')
@@ -155,6 +203,12 @@ class WebsiteSettings extends Page
             'is_active' => (bool) $data['is_active'],
             'theme' => $data['theme'],
             'contact_settings' => $data['contact_settings'],
+            'booking_settings' => [
+                'trip_booking' => (bool) ($data['booking_settings']['trip_booking'] ?? false),
+                'group_joining' => (bool) ($data['booking_settings']['group_joining'] ?? false),
+                'gift_vouchers' => (bool) ($data['booking_settings']['gift_vouchers'] ?? false),
+                'deposit_percent' => (int) ($data['booking_settings']['deposit_percent'] ?? PublicLeadPage::BOOKING_DEFAULTS['deposit_percent']),
+            ],
             'custom_domain' => filled($data['custom_domain']) ? $data['custom_domain'] : null,
         ]);
         $page->save();

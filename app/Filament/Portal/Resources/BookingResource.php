@@ -148,7 +148,7 @@ class BookingResource extends Resource
                     RepeatableEntry::make('addons')
                         ->label('')
                         ->schema([
-                            TextEntry::make('service.name')->label('Service'),
+                            TextEntry::make('name')->label('Service'),
                             TextEntry::make('quantity'),
                             TextEntry::make('price')->label('Price')->money(fn (): string => auth('customer')->user()->tenant?->currency ?? 'USD', divideBy: 100),
                             TextEntry::make('status')->badge(),

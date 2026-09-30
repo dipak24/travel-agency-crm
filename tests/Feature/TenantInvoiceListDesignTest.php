@@ -152,3 +152,19 @@ test('the gift voucher purchase panel on the tenant invoice view shows the purch
         ->assertSeeText('Jane Buyer')
         ->assertSeeText('jane.buyer@example.com');
 });
+
+test('the transaction type column labels standard invoices, which store no purpose', function () {
+    $tenant = tenantInvoiceDesignTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $owner = tenantInvoiceDesignOwner($tenant);
+    $customer = Customer::factory()->create();
+    $standard = tenantDesignInvoiceFor($customer);
+
+    Filament::setCurrentPanel('tenant');
+
+    // Rendered, not just formatted: Filament renders a blank state as an empty placeholder.
+    Livewire::actingAs($owner, 'tenant')->test(ListInvoices::class)
+        ->loadTable()
+        ->assertSeeInOrder([$standard->invoice_no, 'Standard', $standard->created_at->format('M j, Y')])
+        ->assertTableColumnFormattedStateSet('purpose', 'Gift voucher', tenantDesignInvoiceFor($customer, ['purpose' => 'gift_voucher_purchase']));
+});

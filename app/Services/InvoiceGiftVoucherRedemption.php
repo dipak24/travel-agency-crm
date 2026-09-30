@@ -28,12 +28,12 @@ class InvoiceGiftVoucherRedemption
 
         $voucher = GiftVoucher::query()->where('code', $code)->first();
 
-        if (! $voucher || ! in_array($voucher->status, ['unredeemed', 'partially_redeemed'], true)) {
+        if (! $voucher) {
             throw new LogicException('That gift voucher is not valid or has already been fully redeemed.');
         }
 
-        if ($voucher->expires_at && now()->gt($voucher->expires_at)) {
-            throw new LogicException('That gift voucher has expired.');
+        if (($reason = $voucher->rejectionReason()) !== null) {
+            throw new LogicException($reason);
         }
 
         if ($voucher->issued_to !== null && $voucher->issued_to !== $invoice->customer_id) {

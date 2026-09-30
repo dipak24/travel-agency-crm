@@ -5,6 +5,7 @@ namespace App\Filament\Tenant\Resources\PackageResource\RelationManagers;
 use App\Filament\Tenant\Resources\GroupDiscountTierResource;
 use App\Models\GroupDiscountTier;
 use App\Support\Money;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -41,6 +42,13 @@ class DiscountTiersRelationManager extends RelationManager
             ])
             ->defaultSort('min_pax')
             ->headerActions([CreateAction::make()->label('Add tier')])
-            ->recordActions([EditAction::make(), DeleteAction::make()]);
+            ->recordActions([
+                ActionGroup::make([EditAction::make(), DeleteAction::make()])
+                    ->label('Actions')
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->color('gray')
+                    ->size('sm')
+                    ->tooltip('Actions'),
+            ]);
     }
 }

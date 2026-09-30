@@ -33,6 +33,7 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Repeater\TableColumn;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -293,27 +294,49 @@ class BookingResource extends Resource
      * "Exclusions" lists what it doesn't — tick an item to add it to this trip (and charge it).
      * Both accept custom items for this booking only.
      */
+    /**
+     * A row copied from the package (it has the package's included/excluded default), as opposed
+     * to a catalog item or custom line CST added to this booking only.
+     */
+    private static function isPackageRow(Get $get): bool
+    {
+        return ! in_array($get('default_included'), [null, ''], true);
+    }
+
+    /**
+     * The booking's inclusions or exclusions as a table, like the package form: rows copied from the
+     * package, plus any catalog item or custom line CST adds for this booking. A catalog row keeps
+     * the catalog's title and unit; its price can change for this booking. A custom row is typed in.
+     */
     private static function lineItemsSection(string $statePath): Section
     {
         $isInclusions = $statePath === BookingFormState::INCLUSIONS;
 
         return Section::make($isInclusions ? 'Inclusions' : 'Exclusions')
-            ->description($isInclusions
+            ->description(($isInclusions
                 ? 'Covered by the package price. Untick an item this customer doesn\'t need — the price drops by its cost.'
                 : 'Not covered by the package price. Tick an item to add it to this trip — the price goes up by its cost.')
+                .' Pick more items from the Include / Exclude catalog, or leave "Custom item" to type your own line for this booking.')
             ->schema([
                 Repeater::make($statePath)
-                    ->label('')
+                    ->hiddenLabel()
+                    ->table([
+                        TableColumn::make('Catalog item')->width('220px'),
+                        TableColumn::make('Item')->markAsRequired(),
+                        TableColumn::make($isInclusions ? 'Included' : 'Add to trip')->width('100px'),
+                        TableColumn::make('Unit price')->width('160px'),
+                        TableColumn::make('Per')->width('190px'),
+                        TableColumn::make('Price effect')->width('150px'),
+                    ])
                     ->schema([
                         Hidden::make('default_included'),
-                        Hidden::make('is_custom')->default(true),
                         Hidden::make('description'),
                         Select::make('include_exclude_id')
-                            ->label('From catalog')
+                            ->hiddenLabel()
                             ->options(fn (): array => IncludeExclude::query()->orderBy('sort_order')->pluck('title', 'id')->all())
                             ->searchable()
                             ->placeholder('Custom item')
-                            ->visible(fn (Get $get): bool => (bool) $get('is_custom'))
+                            ->disabled(fn (Get $get): bool => static::isPackageRow($get))
                             ->live()
                             ->afterStateUpdated(function (Set $set, $state): void {
                                 $item = filled($state) ? IncludeExclude::query()->find($state) : null;
@@ -326,27 +349,29 @@ class BookingResource extends Resource
                                 }
                             }),
                         TextInput::make('title')
+                            ->hiddenLabel()
+                            ->placeholder('Describe the item')
                             ->required()
                             ->maxLength(255)
-                            ->readOnly(fn (Get $get): bool => ! $get('is_custom')),
+                            ->readOnly(fn (Get $get): bool => filled($get('include_exclude_id'))),
                         Toggle::make('selected')
-                            ->label($isInclusions ? 'Included' : 'Add to trip')
+                            ->hiddenLabel()
                             ->default($isInclusions)
-                            ->inline(false)
                             ->live(),
                         TextInput::make('unit_price')
-                            ->label('Unit price')
+                            ->hiddenLabel()
                             ->numeric()->step(0.01)->minValue(0)->default(0)
                             ->prefix(fn (): string => BookingFormState::currency())
                             ->live(onBlur: true),
                         Select::make('pricing_unit')
-                            ->label('Per')
+                            ->hiddenLabel()
                             ->options(PricingUnit::class)
                             ->default(PricingUnit::PerPerson->value)
                             ->selectablePlaceholder(false)
+                            ->disabled(fn (Get $get): bool => filled($get('include_exclude_id')))
                             ->live(),
                         TextEntry::make('price_effect')
-                            ->label('Price effect')
+                            ->hiddenLabel()
                             ->state(function (Get $get): string {
                                 $delta = BookingFormState::rowDelta([
                                     'selected' => $get('selected'),
@@ -364,16 +389,13 @@ class BookingResource extends Resource
                             ->color(fn (string $state): string => str_starts_with($state, '+') ? 'warning' : (str_starts_with($state, '−') ? 'success' : 'gray'))
                             ->badge(),
                     ])
-                    ->itemLabel(fn (array $state): ?string => ($state['title'] ?? null) ?: 'New item')
                     ->addActionLabel($isInclusions ? 'Add inclusion' : 'Add exclusion')
                     ->afterStateHydrated(function (Repeater $component, ?Booking $record) use ($statePath): void {
                         $component->state(BookingFormState::stateForBooking($record)[$statePath]);
                     })
                     ->dehydrated(false)
                     ->reorderable(false)
-                    ->collapsible()
                     ->defaultItems(0)
-                    ->columns(6)
                     ->columnSpanFull(),
             ])
             ->collapsible()
@@ -381,57 +403,80 @@ class BookingResource extends Resource
     }
 
     /**
-     * Staff-added add-ons are approved by default and count toward the total straight away; a
-     * customer's portal request only counts once it is approved here.
+     * Add-ons as a table: a service from the services list (the package's own are listed first, at
+     * the package price) or a custom add-on typed in for this booking. Staff-added add-ons are
+     * approved by default and count toward the total straight away; a customer's portal request
+     * only counts once it is approved here.
      */
     private static function addonsSection(): Section
     {
         $linePrice = fn (Get $get, Set $set) => $set('price', round(((float) $get('unit_price')) * max(1, (int) $get('quantity')), 2));
+        $serviceName = fn (array $data): array => [
+            ...$data,
+            'name' => filled($data['service_id'] ?? null)
+                ? (Service::query()->whereKey($data['service_id'])->value('name') ?? $data['name'])
+                : $data['name'],
+        ];
 
         return Section::make('Add-ons')
-            ->description('Extra services for this booking. Services linked to the package are listed first, with the package\'s price.')
+            ->description('Extra services for this booking. Pick from your services (the package\'s own are listed first, at the package price), or leave "Custom service" to type your own add-on.')
             ->schema([
                 Repeater::make('addons')
                     ->relationship('addons')
-                    ->label('')
+                    ->hiddenLabel()
                     ->mutateRelationshipDataBeforeCreateUsing(fn (array $data): array => [
-                        ...$data,
+                        ...$serviceName($data),
                         'added_by' => optional(auth('tenant')->user())->email ?? 'staff',
+                    ])
+                    ->mutateRelationshipDataBeforeSaveUsing($serviceName)
+                    ->table([
+                        TableColumn::make('Service')->width('240px'),
+                        TableColumn::make('Name')->markAsRequired(),
+                        TableColumn::make('Qty')->width('90px'),
+                        TableColumn::make('Unit price')->width('160px'),
+                        TableColumn::make('Line total')->width('160px'),
+                        TableColumn::make('Status')->width('150px'),
                     ])
                     ->schema([
                         Select::make('service_id')
-                            ->label('Service')
+                            ->hiddenLabel()
                             ->options(fn (Get $get): array => static::serviceOptions($get('../../package_id')))
                             ->searchable()
-                            ->required()
+                            ->placeholder('Custom service')
                             ->live()
                             ->afterStateUpdated(function (Get $get, Set $set, $state) use ($linePrice): void {
                                 $service = filled($state) ? Service::query()->find($state) : null;
-                                $packageId = $get('../../package_id');
-                                $set('unit_price', Money::toDecimal($service?->unitPriceFor(filled($packageId) ? (int) $packageId : null) ?? 0));
-                                $linePrice($get, $set);
+
+                                if ($service !== null) {
+                                    $packageId = $get('../../package_id');
+                                    $set('name', $service->name);
+                                    $set('unit_price', Money::toDecimal($service->unitPriceFor(filled($packageId) ? (int) $packageId : null)));
+                                    $linePrice($get, $set);
+                                }
                             }),
-                        TextInput::make('quantity')->label('Quantity')->numeric()->integer()->minValue(1)->default(1)->required()
+                        TextInput::make('name')
+                            ->hiddenLabel()
+                            ->placeholder('Describe the add-on')
+                            ->required()
+                            ->maxLength(255)
+                            ->readOnly(fn (Get $get): bool => filled($get('service_id'))),
+                        TextInput::make('quantity')->hiddenLabel()->numeric()->integer()->minValue(1)->default(1)->required()
                             ->live(onBlur: true)
                             ->afterStateUpdated($linePrice),
-                        MoneyInput::make('unit_price')->label('Unit price')->minValue(0)->default(0)
+                        MoneyInput::make('unit_price')->hiddenLabel()->minValue(0)->default(0)
                             ->live(onBlur: true)
                             ->afterStateUpdated($linePrice),
-                        MoneyInput::make('price')->label('Line total')->minValue(0)->readOnly(),
-                        Select::make('status')->options([
+                        MoneyInput::make('price')->hiddenLabel()->minValue(0)->readOnly(),
+                        Select::make('status')->hiddenLabel()->options([
                             'requested' => 'Requested',
                             'approved' => 'Approved',
                             'booked' => 'Booked',
                             'cancelled' => 'Cancelled',
-                        ])->default('approved')->required()->live(),
+                        ])->default('approved')->selectablePlaceholder(false)->required()->live(),
                     ])
-                    ->itemLabel(fn (array $state): ?string => filled($state['service_id'] ?? null)
-                        ? Service::query()->whereKey($state['service_id'])->value('name')
-                        : 'Add-on')
                     ->addActionLabel('Add add-on')
                     ->reorderable(false)
                     ->defaultItems(0)
-                    ->columns(5)
                     ->columnSpanFull(),
             ])
             ->collapsible()
@@ -441,7 +486,7 @@ class BookingResource extends Resource
     private static function documentRequirementsSection(): Section
     {
         return Section::make('Travel document requirements')
-            ->description('Customers are asked to upload only the required documents. Defaults come from the package. "Other documents" is always optional — customers can add up to '.BookingDocument::MAX_OTHER_FILES.' extra files.')
+            ->description('Customers are asked to upload only the required documents. "Other documents" is always optional — customers can add up to '.BookingDocument::MAX_OTHER_FILES.' extra files.')
             ->schema(collect(DocumentType::requirable())
                 ->map(fn (DocumentType $type): Toggle => Toggle::make("document_requirements.{$type->value}")
                     ->label($type->getLabel())
@@ -563,8 +608,8 @@ class BookingResource extends Resource
     }
 
     /**
-     * Copies a package's details into the form: name, days, price, itinerary, document
-     * requirements and its inclusion/exclusion lists.
+     * Copies a package's details into the form: name, days, price, itinerary and its
+     * inclusion/exclusion lists.
      */
     private static function applyPackage(Get $get, Set $set, Package $package): void
     {
@@ -572,7 +617,6 @@ class BookingResource extends Resource
         $set('duration_days', $package->duration_days);
         $set('per_person_price', Money::toDecimal(app(BookingPricing::class)->defaultPerPersonPrice($package)));
         $set('booked_itinerary', $package->itineraryHtml());
-        $set('document_requirements', $package->documentRequirements());
 
         $rows = BookingFormState::rowsToState(BookingIncludeExclude::rowsFromPackage($package));
         $set(BookingFormState::INCLUSIONS, $rows[BookingFormState::INCLUSIONS]);

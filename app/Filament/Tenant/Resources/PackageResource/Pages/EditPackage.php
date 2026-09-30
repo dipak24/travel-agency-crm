@@ -2,15 +2,15 @@
 
 namespace App\Filament\Tenant\Resources\PackageResource\Pages;
 
+use App\Filament\Concerns\HasContainedRelationManagerTabs;
 use App\Filament\Concerns\HasFullWidthForm;
 use App\Filament\Tenant\Resources\PackageResource;
-use App\Models\Package;
-use Filament\Actions\DeleteAction;
+use App\Filament\Tenant\Resources\PackageResource\Concerns\SyncsPackageExtras;
 use Filament\Resources\Pages\EditRecord;
 
 class EditPackage extends EditRecord
 {
-    use HasFullWidthForm;
+    use HasContainedRelationManagerTabs, HasFullWidthForm, SyncsPackageExtras;
 
     protected static string $resource = PackageResource::class;
 
@@ -19,10 +19,8 @@ class EditPackage extends EditRecord
         return $this->getResource()::getUrl('index');
     }
 
-    protected function getHeaderActions(): array
+    protected function afterSave(): void
     {
-        return [
-            DeleteAction::make()->before(fn (Package $record, DeleteAction $action) => PackageResource::guardAgainstDeletingPackageWithBookings($record, $action)),
-        ];
+        $this->syncPackageExtras();
     }
 }

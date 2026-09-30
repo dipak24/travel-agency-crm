@@ -32,14 +32,7 @@ class PackageResource extends JsonResource
                 'amount' => $this->sales_price,
                 'currency' => app(TenantContext::class)->get()?->currency,
             ],
-            'itinerary' => $this->whenHas('itinerary', fn (): array => collect($this->itinerary ?? [])
-                ->values()
-                ->map(fn (array $day, int $index): array => [
-                    'day' => $index + 1,
-                    'title' => $day['title'] ?? null,
-                    'description' => $day['description'] ?? null,
-                ])
-                ->all()),
+            'itinerary' => $this->whenHas('itinerary', fn (): ?string => $this->itineraryHtml()),
             'inclusions' => $this->whenLoaded('includeExcludeItems', fn (): array => $this->publicItemTitles(true)),
             'exclusions' => $this->whenLoaded('includeExcludeItems', fn (): array => $this->publicItemTitles(false)),
             'departures' => FixedDepartureResource::collection($this->whenLoaded('fixedDepartures')),

@@ -135,6 +135,7 @@ class InvoiceResource extends Resource
             TextColumn::make('invoice_no')->label('Invoice number')->searchable()->sortable(),
             TextColumn::make('purpose')
                 ->label('Transaction type')
+                ->default('standard')
                 ->badge()
                 ->color(fn (?string $state): string => $state === 'gift_voucher_purchase' ? 'warning' : 'gray')
                 ->formatStateUsing(fn (?string $state): string => $state === 'gift_voucher_purchase' ? 'Gift voucher' : 'Standard')

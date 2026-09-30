@@ -28,7 +28,6 @@ function publicApiPackage(Tenant $tenant, string $slug, array $attributes = []):
         'base_price' => 50000,
         'sales_price' => 80000,
         'status' => 'published',
-        'is_public' => true,
         ...$attributes,
     ]));
 }
@@ -72,11 +71,11 @@ test('the tenant can be resolved from a subdomain of the public domain', functio
     $this->getJson('http://unknown.trips.test/api/v1/packages')->assertNotFound();
 });
 
-test('the package list only shows the tenant\'s published public packages without internal pricing', function () {
+test('the package list only shows the tenant\'s published packages without internal pricing', function () {
     $tenant = publicApiTenant('himalaya');
     publicApiPackage($tenant, 'everest-base-camp');
     publicApiPackage($tenant, 'draft-trip', ['status' => 'draft']);
-    publicApiPackage($tenant, 'private-trip', ['is_public' => false]);
+    publicApiPackage($tenant, 'archived-trip', ['status' => 'archived']);
     publicApiPackage(publicApiTenant('other-agency'), 'other-tenant-trip');
 
     $response = $this->getJson('/api/v1/packages?tenant=himalaya')->assertOk();
@@ -92,7 +91,7 @@ test('the package list only shows the tenant\'s published public packages withou
 test('package detail includes the itinerary and only upcoming bookable departures', function () {
     $tenant = publicApiTenant('himalaya');
     $package = publicApiPackage($tenant, 'everest-base-camp', [
-        'itinerary' => [['title' => 'Arrive in Kathmandu', 'description' => 'Hotel transfer']],
+        'itinerary' => '<p>Arrive in Kathmandu, hotel transfer.</p>',
     ]);
     $upcoming = publicApiDeparture($package, ['price_override' => 75000, 'overbooking_buffer' => 2]);
     publicApiDeparture($package, ['status' => 'cancelled']);
@@ -100,7 +99,7 @@ test('package detail includes the itinerary and only upcoming bookable departure
 
     $this->getJson('/api/v1/packages/everest-base-camp?tenant=himalaya')
         ->assertOk()
-        ->assertJsonPath('data.itinerary.0', ['day' => 1, 'title' => 'Arrive in Kathmandu', 'description' => 'Hotel transfer'])
+        ->assertJsonPath('data.itinerary', '<p>Arrive in Kathmandu, hotel transfer.</p>')
         ->assertJsonCount(1, 'data.departures')
         ->assertJsonPath('data.departures.0.id', $upcoming->id)
         ->assertJsonPath('data.departures.0.price.amount', 75000)

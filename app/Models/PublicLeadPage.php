@@ -33,7 +33,20 @@ class PublicLeadPage extends Model
         'custom_domain',
         'theme',
         'contact_settings',
+        'booking_settings',
         'is_active',
+    ];
+
+    /**
+     * Defaults for the agency's public booking pages (tenant Website settings → Online booking).
+     *
+     * @var array{trip_booking: bool, group_joining: bool, gift_vouchers: bool, deposit_percent: int}
+     */
+    public const BOOKING_DEFAULTS = [
+        'trip_booking' => true,
+        'group_joining' => true,
+        'gift_vouchers' => true,
+        'deposit_percent' => 25,
     ];
 
     protected static function booted(): void
@@ -57,6 +70,7 @@ class PublicLeadPage extends Model
         return [
             'theme' => 'array',
             'contact_settings' => 'array',
+            'booking_settings' => 'array',
             'is_active' => 'boolean',
             'domain_verified_at' => 'datetime',
         ];
@@ -65,6 +79,17 @@ class PublicLeadPage extends Model
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
+    }
+
+    /**
+     * @return array{trip_booking: bool, group_joining: bool, gift_vouchers: bool, deposit_percent: int}
+     */
+    public function bookingSettings(): array
+    {
+        $settings = array_merge(self::BOOKING_DEFAULTS, array_filter($this->booking_settings ?? [], fn ($value): bool => $value !== null));
+        $settings['deposit_percent'] = max(1, min(100, (int) $settings['deposit_percent']));
+
+        return $settings;
     }
 
     public function hasVerifiedDomain(): bool

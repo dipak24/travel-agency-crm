@@ -5,6 +5,10 @@ use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\Payments\CheckoutController;
 use App\Http\Controllers\Payments\PublicPaymentController;
 use App\Http\Controllers\Payments\WebhookController;
+use App\Http\Controllers\PublicSite\DepartureController;
+use App\Http\Controllers\PublicSite\DepartureWidgetController;
+use App\Http\Controllers\PublicSite\GiftVoucherController;
+use App\Http\Controllers\PublicSite\PackageBookingController;
 use App\Http\Controllers\UnsubscribeController;
 use App\Http\Middleware\EnsurePlatformAvailable;
 use App\Http\Middleware\ResolveAgencySubdomain;
@@ -44,4 +48,24 @@ Route::middleware([ResolveAgencySubdomain::class])->prefix('impersonate')->name(
 Route::middleware([EnsurePlatformAvailable::class, ResolveAgencySubdomain::class, 'signed', 'throttle:6,1'])->prefix('portal/email-change')->name('portal.email-change.')->group(function (): void {
     Route::get('/{customer}/{hash}', [CustomerEmailChangeController::class, 'show'])->name('verify')->whereNumber('customer');
     Route::post('/{customer}/{hash}', [CustomerEmailChangeController::class, 'store'])->name('confirm')->whereNumber('customer');
+});
+
+// The agency's public booking pages on its own subdomain — no login. The agency's own marketing
+// site links here (booking links, departures widget); trip content itself lives on that site. Each
+// page 404s unless the agency has switched it on (tenant Website settings) and its plan allows it
+// (see PublicSite).
+Route::middleware([EnsurePlatformAvailable::class, ResolveAgencySubdomain::class])->name('public.')->group(function (): void {
+    Route::get('/book', [PackageBookingController::class, 'index'])->name('book.index');
+    Route::get('/book/{code}', [PackageBookingController::class, 'show'])->name('book.show');
+    Route::post('/book/{code}/check-code', [PackageBookingController::class, 'checkCode'])->name('book.check-code')->middleware('throttle:10,1');
+    Route::post('/book/{code}', [PackageBookingController::class, 'store'])->name('book.store')->middleware('throttle:10,1');
+
+    Route::get('/widget/departures', DepartureWidgetController::class)->name('widget.departures')->middleware('throttle:60,1');
+
+    Route::get('/departures', [DepartureController::class, 'index'])->name('departures.index');
+    Route::get('/departures/{departure}/join', [DepartureController::class, 'show'])->name('departures.show')->whereNumber('departure');
+    Route::post('/departures/{departure}/join', [DepartureController::class, 'join'])->name('departures.join')->whereNumber('departure')->middleware('throttle:10,1');
+
+    Route::get('/gift-vouchers', [GiftVoucherController::class, 'create'])->name('gift-vouchers.create');
+    Route::post('/gift-vouchers', [GiftVoucherController::class, 'store'])->name('gift-vouchers.store')->middleware('throttle:10,1');
 });

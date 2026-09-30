@@ -30,7 +30,6 @@ class BookingIncludeExclude extends Model
         'units',
         'line_total',
         'default_included',
-        'is_custom',
         'sort_order',
     ];
 
@@ -42,7 +41,6 @@ class BookingIncludeExclude extends Model
             'units' => 'integer',
             'line_total' => 'integer',
             'default_included' => 'boolean',
-            'is_custom' => 'boolean',
             'sort_order' => 'integer',
         ];
     }
@@ -79,10 +77,9 @@ class BookingIncludeExclude extends Model
                 'type' => $item->is_included ? 'include' : 'exclude',
                 'title' => $item->includeExclude->title,
                 'description' => $item->includeExclude->description,
-                'unit_price' => $item->unitPrice(),
+                'unit_price' => $item->unit_price,
                 'pricing_unit' => $item->includeExclude->pricing_unit?->value ?? PricingUnit::PerPerson->value,
                 'default_included' => $item->is_included,
-                'is_custom' => false,
                 'sort_order' => $index,
             ])->all();
     }
@@ -103,7 +100,6 @@ class BookingIncludeExclude extends Model
             'unit_price' => $item->unit_price,
             'pricing_unit' => $item->pricing_unit?->value ?? PricingUnit::PerPerson->value,
             'default_included' => null,
-            'is_custom' => false,
         ];
     }
 
@@ -132,7 +128,6 @@ class BookingIncludeExclude extends Model
                 'unit_price' => max(0, (int) ($row['unit_price'] ?? 0)),
                 'pricing_unit' => PricingUnit::tryFrom((string) ($row['pricing_unit'] ?? ''))?->value ?? PricingUnit::PerPerson->value,
                 'default_included' => $defaultIncluded === null || $defaultIncluded === '' ? null : (bool) $defaultIncluded,
-                'is_custom' => (bool) ($row['is_custom'] ?? false),
                 'sort_order' => $index,
             ]);
         }

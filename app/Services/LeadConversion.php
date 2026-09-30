@@ -78,7 +78,6 @@ class LeadConversion
                 'pax_count' => $lockedLead->pax_count,
                 'status' => 'pending',
                 'per_person_price' => app(BookingPricing::class)->defaultPerPersonPrice($package, $fixedDeparture),
-                'document_requirements' => $package?->documentRequirements(),
                 'created_by_staff_id' => $staff?->id,
             ]);
 

@@ -6,6 +6,7 @@ use App\Enums\BookingType;
 use App\Enums\PricingUnit;
 use App\Models\Booking;
 use App\Models\BookingIncludeExclude;
+use App\Models\IncludeExclude;
 use App\Models\Service;
 use App\Services\BookingPricing;
 use App\Support\BookingQuote;
@@ -73,7 +74,6 @@ class BookingFormState
                 'unit_price' => Money::toDecimal((int) ($row['unit_price'] ?? 0)),
                 'pricing_unit' => $pricingUnit instanceof PricingUnit ? $pricingUnit->value : $pricingUnit,
                 'default_included' => $defaultIncluded,
-                'is_custom' => (bool) ($row['is_custom'] ?? false),
                 'selected' => $selected,
             ];
         }
@@ -92,13 +92,16 @@ class BookingFormState
 
         return self::rowsToState($booking->includeExcludes()->orderBy('sort_order')->get()
             ->map(fn (BookingIncludeExclude $row): array => [
-                ...$row->only(['include_exclude_id', 'type', 'title', 'description', 'unit_price', 'default_included', 'is_custom']),
+                ...$row->only(['include_exclude_id', 'type', 'title', 'description', 'unit_price', 'default_included']),
                 'pricing_unit' => $row->pricing_unit?->value,
             ])->all());
     }
 
     /**
      * The two repeaters' state (dollars) → rows ready for BookingIncludeExclude::syncRows() (cents).
+     * A catalog row always takes its title, description and unit from the catalog, whatever the
+     * form sent; only its price and included/excluded choice are the booking's own. A row with no
+     * catalog item is CST's custom line for this booking, kept as typed.
      *
      * @param  array<array-key, array<string, mixed>>|null  $inclusionRows
      * @param  array<array-key, array<string, mixed>>|null  $exclusionRows
@@ -107,23 +110,30 @@ class BookingFormState
     public static function stateToRows(?array $inclusionRows, ?array $exclusionRows): array
     {
         $rows = [];
+        $stateRows = [...array_values($inclusionRows ?? []), ...array_values($exclusionRows ?? [])];
+        $catalog = IncludeExclude::query()
+            ->whereKey(array_filter(array_map(fn (array $row): int => (int) ($row['include_exclude_id'] ?? 0), $stateRows)))
+            ->get()
+            ->keyBy('id');
 
-        foreach ([...array_values($inclusionRows ?? []), ...array_values($exclusionRows ?? [])] as $row) {
-            if (blank($row['title'] ?? null)) {
+        foreach ($stateRows as $row) {
+            $item = $catalog->get((int) ($row['include_exclude_id'] ?? 0));
+            $title = $item?->title ?? trim((string) ($row['title'] ?? ''));
+
+            if ($title === '') {
                 continue;
             }
 
-            $defaultIncluded = $row['default_included'] ?? null;
+            $defaultIncluded = $item === null ? null : ($row['default_included'] ?? null);
 
             $rows[] = [
-                'include_exclude_id' => filled($row['include_exclude_id'] ?? null) ? (int) $row['include_exclude_id'] : null,
+                'include_exclude_id' => $item?->id,
                 'type' => filter_var($row['selected'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 'include' : 'exclude',
-                'title' => $row['title'],
-                'description' => $row['description'] ?? null,
+                'title' => $title,
+                'description' => $item !== null ? $item->description : ($row['description'] ?? null),
                 'unit_price' => max(0, Money::toCents($row['unit_price'] ?? 0) ?? 0),
-                'pricing_unit' => self::pricingUnit($row['pricing_unit'] ?? null)->value,
+                'pricing_unit' => $item?->pricing_unit?->value ?? self::pricingUnit($row['pricing_unit'] ?? null)->value,
                 'default_included' => $defaultIncluded === null || $defaultIncluded === '' ? null : filter_var($defaultIncluded, FILTER_VALIDATE_BOOLEAN),
-                'is_custom' => filter_var($row['is_custom'] ?? false, FILTER_VALIDATE_BOOLEAN),
             ];
         }
 
@@ -145,7 +155,7 @@ class BookingFormState
             ->pluck('name', 'id');
 
         $addons = array_map(fn (array $addon): array => [
-            'label' => ($serviceNames[$addon['service_id'] ?? 0] ?? 'Service').' × '.max(1, (int) ($addon['quantity'] ?? 1)),
+            'label' => ($serviceNames[$addon['service_id'] ?? 0] ?? (filled($addon['name'] ?? null) ? $addon['name'] : 'Add-on')).' × '.max(1, (int) ($addon['quantity'] ?? 1)),
             'price' => Money::toCents($addon['price'] ?? 0) ?? 0,
             'status' => (string) ($addon['status'] ?? 'requested'),
         ], $addonRows);

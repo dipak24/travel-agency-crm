@@ -29,32 +29,12 @@ class InvoicePromoRedemption
 
         $promo = PromoCode::query()->where('code', $code)->first();
 
-        if (! $promo || ! $promo->is_active) {
+        if (! $promo) {
             throw new LogicException('That promo code is not valid.');
         }
 
-        $now = now();
-
-        if ($promo->valid_from && $now->lt($promo->valid_from)) {
-            throw new LogicException('That promo code is not active yet.');
-        }
-
-        if ($promo->valid_until && $now->gt($promo->valid_until)) {
-            throw new LogicException('That promo code has expired.');
-        }
-
-        if ($promo->usage_limit !== null && $promo->used_count >= $promo->usage_limit) {
-            throw new LogicException('That promo code has reached its usage limit.');
-        }
-
-        $restrictedPackageIds = $promo->packages()->pluck('packages.id');
-
-        if ($restrictedPackageIds->isNotEmpty()) {
-            $packageId = $invoice->booking?->package_id;
-
-            if ($packageId === null || ! $restrictedPackageIds->contains($packageId)) {
-                throw new LogicException('That promo code does not apply to this booking\'s package.');
-            }
+        if (($reason = $promo->rejectionReason($invoice->booking?->package_id)) !== null) {
+            throw new LogicException($reason);
         }
 
         $lineDescription = "Promo code: {$code}";
@@ -63,9 +43,7 @@ class InvoicePromoRedemption
             throw new LogicException('That promo code has already been applied to this invoice.');
         }
 
-        $discount = $promo->discount_type === 'percent'
-            ? (int) round($invoice->total * $promo->discount_value / 100)
-            : min($promo->discount_value, $invoice->total);
+        $discount = $promo->discountOn($invoice->total);
 
         if ($discount <= 0) {
             throw new LogicException('This invoice has no balance left to discount.');

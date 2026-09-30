@@ -7,6 +7,7 @@ use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Tenant\Resources\IncludeExcludeResource\Pages;
 use App\Models\IncludeExclude;
 use BackedEnum;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
@@ -64,7 +65,14 @@ class IncludeExcludeResource extends Resource
                 TextColumn::make('sort_order')->sortable(),
             ])
             ->defaultSort('sort_order')
-            ->recordActions([EditAction::make(), DeleteAction::make()]);
+            ->recordActions([
+                ActionGroup::make([EditAction::make(), DeleteAction::make()])
+                    ->label('Actions')
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->color('gray')
+                    ->size('sm')
+                    ->tooltip('Actions'),
+            ]);
     }
 
     public static function getPages(): array

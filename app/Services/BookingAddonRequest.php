@@ -23,6 +23,7 @@ class BookingAddonRequest
 
         return $booking->addons()->create([
             'service_id' => $service->id,
+            'name' => $service->name,
             'unit_price' => $unitPrice,
             'price' => $unitPrice * $quantity,
             'quantity' => $quantity,

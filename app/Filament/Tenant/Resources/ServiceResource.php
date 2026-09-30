@@ -7,6 +7,7 @@ use App\Filament\Forms\Components\MoneyInput;
 use App\Filament\Tenant\Resources\ServiceResource\Pages;
 use App\Models\Service;
 use BackedEnum;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
@@ -45,7 +46,15 @@ class ServiceResource extends Resource
 
     public static function table(Table $table): Table
     {
-        return $table->columns([TextColumn::make('name')->searchable()->sortable()->description(fn (Service $record): ?string => $record->category), TextColumn::make('pricing_unit')->label('Per')->badge(), TextColumn::make('price')->money(fn (Service $record): string => $record->currency, divideBy: 100), TextColumn::make('currency'), IconColumn::make('is_active')->boolean()])->recordActions([EditAction::make(), DeleteAction::make()]);
+        return $table->columns([TextColumn::make('name')->searchable()->sortable()->description(fn (Service $record): ?string => $record->category), TextColumn::make('pricing_unit')->label('Per')->badge(), TextColumn::make('price')->money(fn (Service $record): string => $record->currency, divideBy: 100), TextColumn::make('currency'), IconColumn::make('is_active')->boolean()])
+            ->recordActions([
+                ActionGroup::make([EditAction::make(), DeleteAction::make()])
+                    ->label('Actions')
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->color('gray')
+                    ->size('sm')
+                    ->tooltip('Actions'),
+            ]);
     }
 
     public static function getPages(): array

@@ -15,7 +15,7 @@ use LogicException;
  * afterwards:
  *
  * - Fixed group: must join a departure; package and dates come from it; seats are reserved.
- * - Private group: needs a package; own dates; at least the package minimum (and 2) travellers.
+ * - Private group: needs a package; own dates; at least 2 travellers.
  * - Individual: package optional (custom trip); own dates.
  *
  * The end date is always start date + duration − 1, worked out here rather than trusted from input.
@@ -64,14 +64,10 @@ class BookingSchedule
             throw ValidationException::withMessages([$errorPrefix.'package_id' => 'Choose the package for this booking.']);
         }
 
-        $minimumPax = $type === BookingType::PrivateGroup ? max(2, $package?->min_pax ?? 1) : max(1, $package?->min_pax ?? 1);
+        $minimumPax = $type === BookingType::PrivateGroup ? 2 : 1;
 
         if ($pax < $minimumPax) {
             throw ValidationException::withMessages([$errorPrefix.'pax_count' => "This booking needs at least {$minimumPax} travellers."]);
-        }
-
-        if ($package?->max_pax !== null && $pax > $package->max_pax) {
-            throw ValidationException::withMessages([$errorPrefix.'pax_count' => "This package takes at most {$package->max_pax} travellers."]);
         }
 
         return $data;

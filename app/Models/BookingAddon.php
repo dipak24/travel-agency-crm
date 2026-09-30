@@ -18,10 +18,20 @@ class BookingAddon extends Model
      */
     public const BILLABLE_STATUSES = ['approved', 'booked'];
 
+    protected static function booted(): void
+    {
+        static::creating(function (self $addon): void {
+            if (blank($addon->name) && $addon->service_id !== null) {
+                $addon->name = (string) Service::query()->whereKey($addon->service_id)->value('name');
+            }
+        });
+    }
+
     protected $fillable = [
         'tenant_id',
         'booking_id',
         'service_id',
+        'name',
         'unit_price',
         'price',
         'quantity',
@@ -51,6 +61,15 @@ class BookingAddon extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
+    }
+
+    /**
+     * The add-on's name as booked: a snapshot of the service name, or CST's own text for a custom
+     * add-on that isn't in the services list.
+     */
+    public function label(): string
+    {
+        return $this->name ?: ($this->service?->name ?? 'Add-on');
     }
 
     public function getActivitylogOptions(): LogOptions

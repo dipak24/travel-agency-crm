@@ -54,6 +54,18 @@ class GiftVoucher extends Model
         return $this->belongsTo(InvoiceItem::class, 'source_invoice_item_id');
     }
 
+    /**
+     * Why this voucher can't be redeemed right now, or null when it can.
+     */
+    public function rejectionReason(): ?string
+    {
+        return match (true) {
+            ! in_array($this->status, ['unredeemed', 'partially_redeemed'], true) || $this->value <= 0 => 'That gift voucher is not valid or has already been fully redeemed.',
+            $this->expires_at !== null && now()->gt($this->expires_at) => 'That gift voucher has expired.',
+            default => null,
+        };
+    }
+
     public function recipientName(): ?string
     {
         return trim("{$this->recipient_first_name} {$this->recipient_last_name}") ?: null;

@@ -194,7 +194,7 @@ class BookingPricing
         }
 
         $addons = $booking->addons()->with('service')->get()->map(fn (BookingAddon $addon): array => [
-            'label' => ($addon->service?->name ?? 'Service').' × '.$addon->quantity,
+            'label' => $addon->label().' × '.$addon->quantity,
             'price' => $addon->price,
             'status' => $addon->status,
         ])->all();

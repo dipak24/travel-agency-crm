@@ -17,6 +17,8 @@ class PlanFeatures
 
     public const ONLINE_PAYMENTS = 'online_payments';
 
+    public const ONLINE_BOOKING = 'online_booking';
+
     public const EMAIL_CAMPAIGNS = 'email_campaigns';
 
     public const GIFT_VOUCHERS = 'gift_vouchers';
@@ -32,6 +34,7 @@ class PlanFeatures
         self::CUSTOMER_PORTAL => ['label' => 'Customer portal', 'description' => 'Customers can sign in to view bookings, invoices and documents.'],
         self::PUBLIC_API => ['label' => 'Public website API', 'description' => 'Packages, departures, inquiries and waitlist over /api/v1.'],
         self::ONLINE_PAYMENTS => ['label' => 'Online payments', 'description' => 'PayPal / HBL card checkout. "Pay later" stays available.'],
+        self::ONLINE_BOOKING => ['label' => 'Online booking', 'description' => 'Travellers book trips and join group departures from the agency\'s public pages.'],
         self::EMAIL_CAMPAIGNS => ['label' => 'Email campaigns', 'description' => 'Mass email to customers or staff.'],
         self::GIFT_VOUCHERS => ['label' => 'Gift vouchers', 'description' => 'Selling and redeeming gift vouchers.'],
         self::PROMO_CODES => ['label' => 'Promo codes', 'description' => 'Managing discount codes.'],

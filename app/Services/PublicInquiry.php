@@ -121,7 +121,7 @@ class PublicInquiry
      */
     public function publicPackages(): Builder
     {
-        return Package::query()->where('status', 'published')->where('is_public', true);
+        return Package::query()->where('status', 'published');
     }
 
     /**
@@ -141,7 +141,7 @@ class PublicInquiry
     /**
      * @param  array{name: string, email: string, phone?: ?string}  $data
      */
-    private function resolveCustomer(array $data): Customer
+    public function resolveCustomer(array $data): Customer
     {
         $email = Str::lower(trim($data['email']));
 

@@ -72,6 +72,11 @@ class DatabaseSeeder extends Seeder
 
         $this->call([PermissionSeeder::class, EmailTemplateSeeder::class, DemoCatalogSeeder::class]);
 
+        // Bookings, invoices, leads, etc. are for clicking around locally; tests build their own.
+        if (! app()->runningUnitTests()) {
+            $this->call(DemoOperationsSeeder::class);
+        }
+
         // Super admins use the fixed sentinel team id (0) — see ResolvePlatformTeam.
         app(PermissionRegistrar::class)->setPermissionsTeamId(0);
         $admin->assignRole(Role::findOrCreate('Super Admin', 'super_admin'));

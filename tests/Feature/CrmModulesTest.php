@@ -214,7 +214,7 @@ test('a lead converts to a booking and reserves fixed departure capacity', funct
         'package_code' => 'ME-01',
         'duration_days' => 4,
         'sales_price' => 125000,
-        'itinerary' => [['title' => 'Arrival', 'description' => 'Welcome']],
+        'itinerary' => '<p><strong>Arrival</strong></p><p>Welcome</p>',
     ]);
     $departure = FixedDeparture::query()->create([
         'package_id' => $package->id,

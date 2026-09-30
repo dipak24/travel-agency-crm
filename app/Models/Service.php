@@ -31,23 +31,23 @@ class Service extends Model
 
     public function packages(): BelongsToMany
     {
-        return $this->belongsToMany(Package::class)->withPivot(['price_override', 'is_featured']);
+        return $this->belongsToMany(Package::class)->withPivot(['price', 'is_featured']);
     }
 
     /**
      * The unit price of this service when sold with the given package: the package's own price
-     * for it if one is set, otherwise the catalog price.
+     * when the package offers it, otherwise the service's price.
      */
     public function unitPriceFor(?int $packageId): int
     {
         if ($packageId !== null) {
-            $override = PackageService::query()
+            $packagePrice = PackageService::query()
                 ->where('package_id', $packageId)
                 ->where('service_id', $this->getKey())
-                ->value('price_override');
+                ->value('price');
 
-            if ($override !== null) {
-                return (int) $override;
+            if ($packagePrice !== null) {
+                return (int) $packagePrice;
             }
         }
 

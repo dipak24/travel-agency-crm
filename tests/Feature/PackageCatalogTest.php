@@ -17,9 +17,7 @@ test('package catalog records are isolated between tenants', function () {
         'slug' => 'first-package',
         'package_code' => 'FIRST-01',
         'duration_days' => 5,
-        'itinerary' => [
-            ['title' => 'Arrival', 'description' => 'Airport transfer and hotel check-in.'],
-        ],
+        'itinerary' => '<p>Arrival: airport transfer and hotel check-in.</p>',
     ]);
 
     app(TenantContext::class)->set($secondTenant);
@@ -30,7 +28,7 @@ test('package catalog records are isolated between tenants', function () {
         ->toBe($firstTenant->id);
 });
 
-test('package itinerary is persisted as structured data', function () {
+test('package itinerary is stored as free text and copied into bookings as-is', function () {
     $tenant = Tenant::query()->create(['name' => 'Travel Agency', 'slug' => 'travel-agency']);
     app(TenantContext::class)->set($tenant);
 
@@ -39,12 +37,10 @@ test('package itinerary is persisted as structured data', function () {
         'slug' => 'mountain-escape',
         'package_code' => 'ME-01',
         'duration_days' => 3,
-        'itinerary' => [
-            ['title' => 'Day 1', 'description' => 'Arrival.'],
-            ['title' => 'Day 2', 'description' => 'Hike.'],
-        ],
+        'itinerary' => '<h2>Day 1</h2><p>Arrival.</p><h2>Day 2</h2><p>Hike.</p>',
     ]);
 
-    expect($package->fresh()->itinerary)->toHaveCount(2)
-        ->and($package->fresh()->itinerary[1]['title'])->toBe('Day 2');
+    expect($package->fresh()->itineraryHtml())->toBe('<h2>Day 1</h2><p>Arrival.</p><h2>Day 2</h2><p>Hike.</p>')
+        ->and($package->fresh()->update(['itinerary' => '']))->toBeTrue()
+        ->and($package->fresh()->itineraryHtml())->toBeNull();
 });

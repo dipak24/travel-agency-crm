@@ -4,6 +4,7 @@ namespace App\Filament\Tenant\Resources\PackageResource\RelationManagers;
 
 use App\Filament\Tenant\Resources\FixedDepartureResource;
 use App\Models\FixedDeparture;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\EditAction;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -40,6 +41,13 @@ class FixedDeparturesRelationManager extends RelationManager
             ])
             ->defaultSort('start_date')
             ->headerActions([CreateAction::make()->label('Add departure')])
-            ->recordActions([EditAction::make()]);
+            ->recordActions([
+                ActionGroup::make([EditAction::make()])
+                    ->label('Actions')
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->color('gray')
+                    ->size('sm')
+                    ->tooltip('Actions'),
+            ]);
     }
 }

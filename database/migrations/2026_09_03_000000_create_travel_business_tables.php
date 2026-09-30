@@ -110,7 +110,7 @@ return new class extends Migration
             $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
             $table->foreignId('package_id')->constrained()->cascadeOnDelete();
             $table->foreignId('service_id')->constrained()->cascadeOnDelete();
-            $table->unsignedBigInteger('price_override')->nullable();
+            $table->unsignedBigInteger('price')->default(0);
             $table->boolean('is_featured')->default(false);
             $table->timestamps();
             $table->unique(['package_id', 'service_id']);
@@ -122,7 +122,7 @@ return new class extends Migration
             $table->foreignId('package_id')->constrained()->cascadeOnDelete();
             $table->foreignId('include_exclude_id')->constrained()->cascadeOnDelete();
             $table->boolean('is_included')->default(true);
-            $table->unsignedInteger('unit_price_override')->nullable();
+            $table->unsignedInteger('unit_price')->default(0);
             $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();
             $table->unique(['package_id', 'include_exclude_id']);
@@ -132,7 +132,9 @@ return new class extends Migration
             $table->id();
             $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
             $table->foreignId('booking_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('service_id')->constrained()->restrictOnDelete();
+            // Null for a custom add-on CST typed in for this booking only.
+            $table->foreignId('service_id')->nullable()->constrained()->restrictOnDelete();
+            $table->string('name');
             $table->unsignedBigInteger('unit_price')->default(0);
             $table->unsignedBigInteger('price')->default(0);
             $table->unsignedInteger('quantity')->default(1);
@@ -155,7 +157,6 @@ return new class extends Migration
             $table->unsignedInteger('units')->default(1);
             $table->unsignedBigInteger('line_total')->default(0);
             $table->boolean('default_included')->nullable();
-            $table->boolean('is_custom')->default(false);
             $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();
             $table->index(['tenant_id', 'booking_id', 'type']);
@@ -242,6 +243,7 @@ return new class extends Migration
             $table->timestamp('domain_verified_at')->nullable();
             $table->jsonb('theme')->nullable();
             $table->jsonb('contact_settings')->nullable();
+            $table->jsonb('booking_settings')->nullable();
             $table->boolean('is_active')->default(false);
             $table->timestamps();
         });
