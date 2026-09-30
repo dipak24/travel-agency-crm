@@ -15,7 +15,6 @@ use App\Services\InvoicePaymentLinks;
 use App\Services\Mail\TenantMailer;
 use App\Support\Money;
 use BackedEnum;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Closure;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -36,13 +35,13 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use Throwable;
 use UnitEnum;
 
 class InvoiceResource extends Resource
 {
+    public const NO_PAYMENT_METHOD_HINT = 'No payment method is enabled for this agency yet — set one up in Payment settings. Pay Later is only offered on the booking pages, not on payment links.';
+
     protected static ?string $model = Invoice::class;
 
     protected static ?string $navigationLabel = 'Invoices';
@@ -193,37 +192,26 @@ class InvoiceResource extends Resource
 
     /**
      * Shared between the table's row action menu and the View page's header actions, so the two
-     * never drift out of sync on what an invoice can be acted on with.
+     * never drift out of sync on what an invoice can be acted on with. A draft isn't ready for the
+     * customer yet, so it offers none of these — only Edit.
      *
      * @return array<Action>
      */
     public static function rowActions(): array
     {
+        $links = fn (): InvoicePaymentLinks => app(InvoicePaymentLinks::class);
+
         return [
             static::copyPaymentLinkAction(),
             Action::make('downloadPdf')
                 ->label('Download PDF')
                 ->icon('heroicon-o-arrow-down-tray')
-                ->action(function (Invoice $record) {
-                    $record->loadMissing(['tenant', 'customer', 'booking']);
-
-                    try {
-                        $output = Pdf::loadView('pdf.invoice', ['invoice' => $record])->output();
-                    } catch (Throwable $e) {
-                        Log::error('Invoice PDF generation failed.', ['invoice_id' => $record->id, 'message' => $e->getMessage()]);
-                        Notification::make()->title('Could not generate the PDF')->danger()->send();
-
-                        return null;
-                    }
-
-                    return response()->streamDownload(
-                        fn () => print ($output),
-                        "{$record->invoice_no}.pdf",
-                    );
-                }),
+                ->visible(fn (Invoice $record): bool => ! static::isDraft($record))
+                ->url(fn (Invoice $record): string => route('filament.tenant.invoices.pdf', ['invoice' => $record]), shouldOpenInNewTab: true),
             Action::make('emailInvoice')
                 ->label('Email invoice')
                 ->icon('heroicon-o-envelope')
+                ->visible(fn (Invoice $record): bool => ! static::isDraft($record))
                 ->requiresConfirmation()
                 ->modalDescription(fn (Invoice $record): string => "Email a PDF copy of this invoice to {$record->customer?->email}?")
                 ->action(function (Invoice $record): void {
@@ -240,11 +228,19 @@ class InvoiceResource extends Resource
             Action::make('sendPaymentLink')
                 ->label('Send payment link')
                 ->icon('heroicon-o-link')
-                ->visible(fn (Invoice $record): bool => $record->balanceDue() > 0 && $record->customer?->email !== null)
+                ->visible(fn (Invoice $record): bool => ! static::isDraft($record) && $record->balanceDue() > 0 && $record->customer?->email !== null)
+                ->disabled(fn (Invoice $record): bool => ! $links()->canBePaidOnline($record))
+                ->tooltip(fn (Invoice $record): ?string => $links()->canBePaidOnline($record) ? null : static::NO_PAYMENT_METHOD_HINT)
                 ->requiresConfirmation()
                 ->modalDescription(fn (Invoice $record): string => "Email a no-login payment link for this invoice to {$record->customer?->email}?")
-                ->action(function (Invoice $record): void {
-                    $url = app(InvoicePaymentLinks::class)->url($record);
+                ->action(function (Invoice $record) use ($links): void {
+                    if (! $links()->canBePaidOnline($record)) {
+                        Notification::make()->title('No payment method is enabled')->body(static::NO_PAYMENT_METHOD_HINT)->danger()->send();
+
+                        return;
+                    }
+
+                    $url = $links()->url($record);
 
                     $sent = app(TenantMailer::class)->send($record->tenant_id, $record->customer, new InvoicePaymentLink($record, $url));
 
@@ -259,6 +255,11 @@ class InvoiceResource extends Resource
         ];
     }
 
+    public static function isDraft(Invoice $invoice): bool
+    {
+        return $invoice->status === 'draft';
+    }
+
     /**
      * A no-login payment link CST copy and send to the customer themselves (WhatsApp, SMS, chat).
      * Disabled until the agency has a payment method the customer could use.
@@ -271,15 +272,13 @@ class InvoiceResource extends Resource
             ->label('Copy payment link')
             ->icon('heroicon-o-clipboard-document')
             ->color('success')
-            ->visible(fn (Invoice $record): bool => $record->balanceDue() > 0)
+            ->visible(fn (Invoice $record): bool => ! static::isDraft($record) && $record->balanceDue() > 0)
             ->disabled(fn (Invoice $record): bool => ! $links()->canBePaidOnline($record))
-            ->tooltip(fn (Invoice $record): ?string => $links()->canBePaidOnline($record)
-                ? null
-                : 'No payment method is enabled for this agency yet — set one up in Payment settings.')
+            ->tooltip(fn (Invoice $record): ?string => $links()->canBePaidOnline($record) ? null : static::NO_PAYMENT_METHOD_HINT)
             ->modalHeading('Payment link')
             ->modalDescription('Send this link to the customer by WhatsApp, SMS or email. They can pay without logging in, using the payment methods enabled for your agency.')
             ->modalIcon('heroicon-o-link')
-            ->schema(fn (Invoice $record): array => static::paymentLinkFields(fn (): ?Invoice => $record))
+            ->schema(fn (Invoice $record): array => static::paymentLinkFields(fn (): ?Invoice => $links()->canBePaidOnline($record) ? $record : null))
             ->modalSubmitAction(false)
             ->modalCancelActionLabel('Close');
     }

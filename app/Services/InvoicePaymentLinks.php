@@ -30,10 +30,16 @@ class InvoicePaymentLinks
         60 => '60 days',
     ];
 
-    public function url(Invoice $invoice, int $days = self::DEFAULT_DAYS): string
+    /**
+     * `$offerPayLater` is only for the public booking pages' own redirect to payment: a link staff
+     * copy or send never offers Pay Later. The flag is part of the signature, so it can't be added
+     * to a link by hand.
+     */
+    public function url(Invoice $invoice, int $days = self::DEFAULT_DAYS, bool $offerPayLater = false): string
     {
         $invoice->loadMissing('tenant');
-        $sign = fn (): string => URL::temporarySignedRoute('public.pay.show', $this->expiresAt($days), ['invoice' => $invoice->getKey()]);
+        $parameters = ['invoice' => $invoice->getKey(), ...($offerPayLater ? ['pay_later' => 1] : [])];
+        $sign = fn (): string => URL::temporarySignedRoute('public.pay.show', $this->expiresAt($days), $parameters);
 
         return $invoice->tenant !== null ? AgencySubdomain::within($invoice->tenant, $sign) : $sign();
     }
@@ -44,13 +50,16 @@ class InvoicePaymentLinks
     }
 
     /**
-     * Whether a customer could actually pay this invoice from a link: something is still owed and
-     * the agency has at least one payment method enabled (online methods depend on the plan's
+     * Whether staff can hand out a payment link for this invoice: it has been issued (not a draft
+     * or cancelled), something is still owed, and the agency has at least one method enabled that
+     * takes a payment — Pay Later alone doesn't count (online methods depend on the plan's
      * "Online payments" feature and the agency's gateway settings).
      */
     public function canBePaidOnline(Invoice $invoice): bool
     {
-        return $invoice->balanceDue() > 0 && app(PaymentGatewayResolver::class)->enabledFor($invoice) !== [];
+        return ! in_array($invoice->status, ['draft', 'cancelled'], true)
+            && $invoice->balanceDue() > 0
+            && app(PaymentGatewayResolver::class)->payNowFor($invoice) !== [];
     }
 
     /**

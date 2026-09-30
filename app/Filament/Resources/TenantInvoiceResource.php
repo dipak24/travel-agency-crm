@@ -10,7 +10,6 @@ use App\Models\TenantSubscription;
 use App\Support\Currencies;
 use App\Support\Money;
 use BackedEnum;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\EditAction;
@@ -180,19 +179,13 @@ class TenantInvoiceResource extends Resource
                         ->icon('heroicon-o-x-circle')
                         ->color('danger')
                         ->requiresConfirmation()
-                        ->visible(fn (TenantInvoice $record): bool => ! in_array($record->status, ['paid', 'cancelled'], true))
+                        ->visible(fn (TenantInvoice $record): bool => ! in_array($record->status, ['draft', 'paid', 'cancelled'], true))
                         ->action(fn (TenantInvoice $record) => $record->update(['status' => 'cancelled'])),
                     Action::make('downloadPdf')
                         ->label('Download PDF')
                         ->icon('heroicon-o-arrow-down-tray')
-                        ->action(function (TenantInvoice $record) {
-                            $record->loadMissing(['tenant', 'items']);
-
-                            return response()->streamDownload(
-                                fn () => print (Pdf::loadView('pdf.tenant-invoice', ['invoice' => $record])->output()),
-                                "{$record->invoice_no}.pdf",
-                            );
-                        }),
+                        ->visible(fn (TenantInvoice $record): bool => $record->status !== 'draft')
+                        ->url(fn (TenantInvoice $record): string => route('filament.admin.tenant-invoices.pdf', ['invoice' => $record]), shouldOpenInNewTab: true),
                 ])
                     ->label('Actions')
                     ->icon('heroicon-m-ellipsis-vertical')

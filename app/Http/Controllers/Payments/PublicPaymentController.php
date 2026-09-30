@@ -43,7 +43,9 @@ class PublicPaymentController extends Controller
                 'paidAmount' => $invoiceModel->paidAmount(),
                 'balanceDue' => $invoiceModel->balanceDue(),
                 'linkExpiresAt' => $request->filled('expires') ? Carbon::createFromTimestamp((int) $request->query('expires'), $tenant?->timezone ?: config('app.timezone')) : null,
-                'gateways' => app(PaymentGatewayResolver::class)->enabledFor($invoiceModel),
+                'gateways' => $request->boolean('pay_later')
+                    ? app(PaymentGatewayResolver::class)->enabledFor($invoiceModel)
+                    : app(PaymentGatewayResolver::class)->payNowFor($invoiceModel),
             ]);
         });
     }

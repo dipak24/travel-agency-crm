@@ -21,12 +21,8 @@ class PaymentsRelationManager extends RelationManager
                 TextColumn::make('type')->badge(),
                 TextColumn::make('method')->badge()->color('gray'),
                 TextColumn::make('status')->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'completed' => 'success',
-                        'failed' => 'danger',
-                        'refunded' => 'warning',
-                        default => 'info',
-                    }),
+                    ->formatStateUsing(fn (string $state): string => Payment::statusOptions()[$state] ?? $state)
+                    ->color(fn (string $state): string => Payment::statusColor($state)),
                 TextColumn::make('transaction_ref')->label('Reference')->placeholder('—'),
                 TextColumn::make('paid_at')->dateTime('M j, Y H:i')->sortable(),
             ])

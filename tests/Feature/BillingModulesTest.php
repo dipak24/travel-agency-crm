@@ -16,6 +16,7 @@ use App\Models\TenantUser;
 use App\Notifications\InvoiceEmailed;
 use App\Policies\InvoicePolicy;
 use App\Policies\PaymentPolicy;
+use App\Services\InvoicePdf;
 use App\Services\Mail\TenantMailer;
 use App\Support\TenantContext;
 use Database\Seeders\PermissionSeeder;
@@ -266,8 +267,80 @@ test('a tenant staff member can download an invoice as a PDF', function () {
     Filament::setCurrentPanel('tenant');
 
     Livewire::actingAs($owner, 'tenant')->test(ListInvoices::class)
-        ->callAction(TestAction::make('downloadPdf')->table($invoice))
-        ->assertFileDownloaded("{$invoice->invoice_no}.pdf");
+        ->assertActionHasUrl(TestAction::make('downloadPdf')->table($invoice), route('filament.tenant.invoices.pdf', ['invoice' => $invoice]))
+        ->assertActionShouldOpenUrlInNewTab(TestAction::make('downloadPdf')->table($invoice));
+
+    $response = $this->actingAsStaff($owner)->get("/tenant/invoices/{$invoice->id}/pdf");
+
+    $response->assertOk()->assertHeader('Content-Type', 'application/pdf');
+    expect($response->headers->get('Content-Disposition'))->toStartWith('inline')->toContain("{$invoice->invoice_no}.pdf");
+});
+
+test('the invoice PDF is branded with the agency and lists the lines and transactions', function () {
+    $tenant = billingTenant('Northwind Travel', 'northwind-travel');
+    $tenant->update(['primary_color' => '#0055aa', 'address' => 'Thamel, Kathmandu', 'billing_email' => 'billing@northwind.test']);
+    app(TenantContext::class)->set($tenant);
+
+    $customer = Customer::factory()->create(['name' => 'Royal Holidays']);
+    $invoice = Invoice::query()->create([
+        'customer_id' => $customer->id, 'amount' => 111700, 'total' => 111700, 'currency' => 'NPR', 'status' => 'partially_paid',
+    ]);
+    $invoice->items()->create(['description' => 'Hosting & domain renew', 'qty' => 1, 'unit_price' => 111700, 'total' => 111700]);
+    $invoice->payments()->create(['amount' => 50000, 'currency' => 'NPR', 'method' => 'paypal', 'type' => 'installment', 'status' => 'completed', 'transaction_ref' => 'TXN-1880', 'paid_at' => now()]);
+
+    $html = app(InvoicePdf::class)->forInvoice($invoice->fresh())->getDomPDF()->getDom()->saveHTML();
+
+    expect($html)
+        ->toContain('Proforma Invoice #'.$invoice->invoice_no)
+        ->toContain('Northwind Travel')
+        ->toContain('Thamel, Kathmandu')
+        ->toContain('#0055aa')
+        ->toContain('Royal Holidays')
+        ->toContain('Hosting &amp; domain renew')
+        ->toContain('TXN-1880')
+        ->toContain('PayPal')
+        ->toContain('NPR 617.00')
+        ->toContain('Partially paid');
+});
+
+test('a staff member cannot open another agency\'s invoice PDF', function () {
+    $tenant = billingTenant('Northwind Travel', 'northwind-travel');
+    $this->seed();
+    $otherTenant = billingTenant('Southwind Travel', 'southwind-travel');
+
+    app(TenantContext::class)->set($otherTenant);
+    $otherInvoice = Invoice::query()->create([
+        'customer_id' => Customer::factory()->create()->id, 'amount' => 1000, 'total' => 1000, 'currency' => 'USD', 'status' => 'issued',
+    ]);
+
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $owner->assignRole(Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail());
+
+    $this->actingAsStaff($owner)->get("/tenant/invoices/{$otherInvoice->id}/pdf")->assertNotFound();
+});
+
+test('a draft invoice offers only the edit action', function () {
+    $tenant = billingTenant('Northwind Travel', 'northwind-travel');
+    $this->seed();
+
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $owner->assignRole(Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail());
+
+    $customer = Customer::factory()->create(['email' => 'traveler@example.com']);
+    $invoice = Invoice::query()->create([
+        'customer_id' => $customer->id, 'amount' => 150000, 'total' => 150000, 'currency' => 'USD', 'status' => 'draft',
+    ]);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(ListInvoices::class)
+        ->assertActionHidden(TestAction::make('downloadPdf')->table($invoice))
+        ->assertActionHidden(TestAction::make('emailInvoice')->table($invoice))
+        ->assertActionHidden(TestAction::make('sendPaymentLink')->table($invoice))
+        ->assertActionHidden(TestAction::make('copyPaymentLink')->table($invoice))
+        ->assertActionVisible(TestAction::make('edit')->table($invoice));
 });
 
 test('a tenant staff member can email an invoice PDF to the customer', function () {

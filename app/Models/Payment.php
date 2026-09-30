@@ -25,6 +25,38 @@ class Payment extends Model
         'reconciled_at',
     ];
 
+    /**
+     * Every status a payment can be in. Only `completed` counts towards what an invoice has been
+     * paid; the others keep a record of attempts that didn't take money (an online card payment
+     * the bank declined, the customer cancelled, or that timed out).
+     *
+     * @return array<string, string>
+     */
+    public static function statusOptions(): array
+    {
+        return [
+            'pending' => 'Pending',
+            'completed' => 'Completed',
+            'failed' => 'Failed',
+            'declined' => 'Declined',
+            'cancelled' => 'Cancelled',
+            'expired' => 'Expired',
+            'voided' => 'Voided',
+            'refunded' => 'Refunded',
+        ];
+    }
+
+    public static function statusColor(?string $status): string
+    {
+        return match ($status) {
+            'completed' => 'success',
+            'failed', 'declined' => 'danger',
+            'refunded' => 'warning',
+            'cancelled', 'expired', 'voided' => 'gray',
+            default => 'info',
+        };
+    }
+
     protected static function booted(): void
     {
         static::saved(function (self $payment): void {

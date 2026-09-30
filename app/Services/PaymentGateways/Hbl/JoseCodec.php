@@ -47,6 +47,13 @@ class JoseCodec
     private const TOKEN_TYPE = 'JWT';
 
     /**
+     * Seconds of clock difference tolerated on nbf/exp. PACO stamps its responses with an `nbf` a
+     * few seconds ahead of our clock, so a zero-drift check rejected every real UAT response with
+     * "The JWT can not be used yet".
+     */
+    private const ALLOWED_CLOCK_DRIFT_SECONDS = 300;
+
+    /**
      * @param  array<string, mixed>  $payload
      *
      * @throws JsonException
@@ -115,8 +122,8 @@ class JoseCodec
         $clock = new NativeClock;
 
         (new ClaimCheckerManager([
-            new NotBeforeChecker($clock),
-            new ExpirationTimeChecker($clock),
+            new NotBeforeChecker($clock, self::ALLOWED_CLOCK_DRIFT_SECONDS),
+            new ExpirationTimeChecker($clock, self::ALLOWED_CLOCK_DRIFT_SECONDS),
             new AudienceChecker($expectedAudience),
             new IssuerChecker(['PacoIssuer']),
         ]))->check($claims);

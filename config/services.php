@@ -37,5 +37,16 @@ return [
 
     // PayPal and HBL credentials are tenant-scoped, not global — see
     // App\Filament\Tenant\Pages\PaymentGateways and the tenant_payment_gateways table.
+    // These are only read by Database\Seeders\HblUatPaymentGatewaySeeder, to put HBL's UAT test
+    // credentials back on the demo agency after `migrate:fresh --seed`. Never used at runtime.
+    'hbl_uat' => [
+        'office_id' => env('HBL_UAT_OFFICE_ID'),
+        'api_key' => env('HBL_UAT_API_KEY'),
+        'encryption_key_id' => env('HBL_UAT_ENCRYPTION_KEY_ID'),
+        'merchant_signing_private_key' => env('HBL_UAT_MERCHANT_SIGNING_PRIVATE_KEY'),
+        'merchant_decryption_private_key' => env('HBL_UAT_MERCHANT_DECRYPTION_PRIVATE_KEY'),
+        'paco_encryption_public_key' => env('HBL_UAT_PACO_ENCRYPTION_PUBLIC_KEY'),
+        'paco_signing_public_key' => env('HBL_UAT_PACO_SIGNING_PUBLIC_KEY'),
+    ],
 
 ];

@@ -5,6 +5,7 @@ use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Tenant;
 use App\Models\TenantPaymentGateway;
+use App\Services\InvoicePaymentLinks;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -63,6 +64,21 @@ test('a validly signed public pay link shows the invoice and only enabled gatewa
     $this->get($url)
         ->assertOk()
         ->assertSee('Pay USD 500.00 via PayPal');
+});
+
+test('pay later is only offered on the booking pages\' payment redirect, never on a staff payment link', function () {
+    $tenant = publicPayTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $invoice = publicPayInvoice(Customer::factory()->create(), ['total' => 50000]);
+    TenantPaymentGateway::query()->create(['tenant_id' => $tenant->id, 'gateway' => 'pay_later', 'enabled' => true]);
+
+    $this->get(app(InvoicePaymentLinks::class)->url($invoice))
+        ->assertOk()
+        ->assertDontSee('via Pay Later');
+
+    $this->get(app(InvoicePaymentLinks::class)->url($invoice, offerPayLater: true))
+        ->assertOk()
+        ->assertSee('via Pay Later');
 });
 
 test('a signed public pay link past its expiry is refused', function () {

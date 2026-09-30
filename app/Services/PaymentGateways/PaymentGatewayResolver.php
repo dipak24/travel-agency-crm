@@ -47,4 +47,19 @@ class PaymentGatewayResolver
             fn (PaymentGateway $gateway): bool => $gateway->isEnabledFor($invoice),
         ));
     }
+
+    /**
+     * The enabled gateways that actually take a payment — Pay Later left out. Pay Later is only
+     * offered to a customer booking on the agency's public booking pages, never on a payment link
+     * staff send, whose whole point is to collect the money.
+     *
+     * @return array<int, PaymentGateway>
+     */
+    public function payNowFor(Invoice $invoice): array
+    {
+        return array_values(array_filter(
+            $this->enabledFor($invoice),
+            fn (PaymentGateway $gateway): bool => ! $gateway instanceof PayLaterGateway,
+        ));
+    }
 }

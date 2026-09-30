@@ -7,7 +7,6 @@ use App\Models\Invoice;
 use App\Services\InvoiceGiftVoucherRedemption;
 use App\Services\InvoicePromoRedemption;
 use App\Services\PaymentGateways\PaymentGatewayResolver;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
@@ -61,14 +60,7 @@ class ViewInvoice extends ViewRecord
             Action::make('downloadPdf')
                 ->label('Download PDF')
                 ->icon('heroicon-o-arrow-down-tray')
-                ->action(function (Invoice $record) {
-                    $record->loadMissing(['tenant', 'customer', 'booking']);
-
-                    return response()->streamDownload(
-                        fn () => print (Pdf::loadView('pdf.invoice', ['invoice' => $record])->output()),
-                        "{$record->invoice_no}.pdf",
-                    );
-                }),
+                ->url(fn (Invoice $record): string => route('filament.portal.invoices.pdf', ['invoice' => $record]), shouldOpenInNewTab: true),
         ];
     }
 

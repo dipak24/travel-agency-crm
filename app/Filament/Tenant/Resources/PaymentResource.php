@@ -70,12 +70,7 @@ class PaymentResource extends Resource
                 'final' => 'Final',
                 'refund' => 'Refund',
             ])->required()->default('installment'),
-            Select::make('status')->options([
-                'pending' => 'Pending',
-                'completed' => 'Completed',
-                'failed' => 'Failed',
-                'refunded' => 'Refunded',
-            ])->required()->default('completed'),
+            Select::make('status')->options(Payment::statusOptions())->required()->default('completed'),
             TextInput::make('transaction_ref')->label('Transaction reference')->maxLength(255),
             DateTimePicker::make('paid_at')->default(now()),
         ])->columns(2);
@@ -91,12 +86,8 @@ class PaymentResource extends Resource
                 TextColumn::make('type')->badge(),
                 TextColumn::make('method')->badge()->color('gray'),
                 TextColumn::make('status')->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'completed' => 'success',
-                        'failed' => 'danger',
-                        'refunded' => 'warning',
-                        default => 'info',
-                    }),
+                    ->formatStateUsing(fn (string $state): string => Payment::statusOptions()[$state] ?? $state)
+                    ->color(fn (string $state): string => Payment::statusColor($state)),
                 TextColumn::make('paid_at')->dateTime('M j, Y H:i')->sortable(),
                 IconColumn::make('reconciled_at')->label('Reconciled')->boolean()
                     ->getStateUsing(fn (Payment $record): bool => $record->reconciled_at !== null),

@@ -16,6 +16,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | database/migrations/** | .ai/rules/migrations.md |
 | app/Notifications/** | .ai/rules/notifications.md |
 | app/Filament/**/Pages/List*.php | .ai/rules/pages.md |
+| app/Services/PaymentGateways/** | .ai/rules/payment-gateways.md |
 | app/Services/TenantOnboarding.php,app/Policies/RolePolicy.php | .ai/rules/policies.md |
 | app/Filament/**/Widgets/**,app/Filament/**/Reports/** | .ai/rules/reports.md |
 | app/Filament/Tenant/Resources/**,app/Filament/Resources/TenantResource* | .ai/rules/resources-filament-resources.md |

@@ -190,6 +190,10 @@ test('staff can send a customer a public payment link by email', function () {
         'currency' => 'USD',
         'status' => 'issued',
     ]);
+    TenantPaymentGateway::query()->create([
+        'tenant_id' => $tenant->id, 'gateway' => 'paypal', 'enabled' => true,
+        'credentials' => ['mode' => 'sandbox', 'client_id' => 'id', 'client_secret' => 'secret', 'webhook_id' => 'wh'],
+    ]);
 
     Filament::setCurrentPanel('tenant');
 
@@ -257,6 +261,28 @@ test('the copy payment link action stays disabled until the agency has a payment
         ->assertActionEnabled(TestAction::make('copyPaymentLink')->table($invoice))
         ->mountAction(TestAction::make('copyPaymentLink')->table($invoice))
         ->assertMountedActionModalSee(['/pay/'.$invoice->id, 'No login needed']);
+});
+
+test('pay later alone does not let staff generate a payment link', function () {
+    Notification::fake();
+
+    $tenant = pgsTenant('Northwind Travel', 'northwind-travel');
+    (new PermissionSeeder)->run();
+    app(TenantContext::class)->set($tenant);
+    $owner = pgsOwner($tenant);
+    $customer = Customer::factory()->create(['email' => 'traveler@example.com']);
+    $invoice = Invoice::query()->create([
+        'customer_id' => $customer->id, 'amount' => 100000, 'total' => 100000, 'currency' => 'USD', 'status' => 'issued',
+    ]);
+    TenantPaymentGateway::query()->create(['tenant_id' => $tenant->id, 'gateway' => 'pay_later', 'enabled' => true]);
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(ListInvoices::class)
+        ->assertActionDisabled(TestAction::make('copyPaymentLink')->table($invoice))
+        ->assertActionDisabled(TestAction::make('sendPaymentLink')->table($invoice));
+
+    Notification::assertNothingSent();
 });
 
 test('a copied payment link is signed for the agency subdomain and opens without any login', function () {

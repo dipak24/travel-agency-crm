@@ -80,8 +80,23 @@ test('a customer can download their invoice as a PDF', function () {
 
     Livewire::actingAs($customer, 'customer')
         ->test(ViewInvoice::class, ['record' => $invoice->getRouteKey()])
-        ->callAction(TestAction::make('downloadPdf'))
-        ->assertFileDownloaded("{$invoice->invoice_no}.pdf");
+        ->assertActionShouldOpenUrlInNewTab(TestAction::make('downloadPdf'));
+
+    $this->actingAs($customer, 'customer')
+        ->get(portalUrl($tenant, "/portal/invoices/{$invoice->id}/pdf"))
+        ->assertOk()
+        ->assertHeader('Content-Type', 'application/pdf');
+});
+
+test('a customer cannot open another customer\'s invoice PDF', function () {
+    $tenant = portalInvoicesTenant('Northwind Travel', 'northwind-travel');
+    app(TenantContext::class)->set($tenant);
+    $customer = Customer::factory()->create(['password' => 'secret-password']);
+    $otherInvoice = portalInvoiceFor(Customer::factory()->create());
+
+    $this->actingAs($customer, 'customer')
+        ->get(portalUrl($tenant, "/portal/invoices/{$otherInvoice->id}/pdf"))
+        ->assertForbidden();
 });
 
 test('the invoice list shows the type and mode columns and can be filtered by type', function () {

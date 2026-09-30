@@ -12,3 +12,4 @@ storage/framework/sessions
 storage/framework/views
 Dockerfile
 docker-compose.yml
+Makefile

@@ -72,7 +72,11 @@ class EditBooking extends EditRecord
                             ->label('Invoice')
                             ->options(fn (): array => $this->openInvoices()->mapWithKeys(fn (Invoice $invoice): array => [
                                 $invoice->id => "{$invoice->invoice_no} — ".Money::format($invoice->balanceDue(), $invoice->currency).' due'
-                                    .(app(InvoicePaymentLinks::class)->canBePaidOnline($invoice) ? '' : ' (no payment method enabled)'),
+                                    .match (true) {
+                                        $invoice->status === 'draft' => ' (draft — issue it first)',
+                                        ! app(InvoicePaymentLinks::class)->canBePaidOnline($invoice) => ' (no payment method enabled)',
+                                        default => '',
+                                    },
                             ])->all())
                             ->default(fn (): ?int => $this->openInvoices()->first()?->id)
                             ->selectablePlaceholder(false)

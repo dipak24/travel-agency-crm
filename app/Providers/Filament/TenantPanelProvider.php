@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Filament\AgencyBranding;
+use App\Http\Controllers\InvoicePdfController;
 use App\Http\Middleware\EnsurePlatformAvailable;
 use App\Http\Middleware\ResolveAgencySubdomain;
 use App\Http\Middleware\ResolveTenant;
@@ -22,6 +23,7 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Route;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 /**
@@ -69,6 +71,7 @@ class TenantPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
             ])
+            ->authenticatedRoutes(fn () => Route::get('invoices/{invoice}/pdf', [InvoicePdfController::class, 'staff'])->whereNumber('invoice')->name('invoices.pdf'))
             ->authMiddleware([
                 Authenticate::class,
                 ResolveTenant::class,

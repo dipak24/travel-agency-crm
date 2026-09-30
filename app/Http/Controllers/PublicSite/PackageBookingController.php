@@ -75,7 +75,7 @@ class PackageBookingController extends Controller
 
         $invoice = app(PublicBooking::class)->book($package, null, $data);
 
-        return redirect()->away(app(InvoicePaymentLinks::class)->url($invoice));
+        return redirect()->away(app(InvoicePaymentLinks::class)->url($invoice, offerPayLater: true));
     }
 
     /**

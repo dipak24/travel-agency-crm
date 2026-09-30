@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use JsonException;
 use RuntimeException;
 use Throwable;
 
@@ -24,11 +25,11 @@ use Throwable;
  * App\Services\PaymentGateways\Hbl\JoseCodec. Adapted from HBL's own published PHP demo
  * (hbldemo/src/api/Payment.php et al).
  *
- * The exact JSON shape PACO posts to our webhook (backendURL) isn't in the material HBL supplied
- * — only the demo's outgoing request shapes are. A webhook is trusted once it decrypts and its
- * signature verifies (the same trust model as PayPal's webhook signature check), but the field
- * paths used to read orderNo/status/amount out of it are a best-effort guess pending a real UAT
- * test — see DELIVERY_ROADMAP.md Phase 10.
+ * Every checkout attempt is recorded as a `pending` Payment keyed by its PACO orderNo. Its outcome
+ * is never taken from the browser redirect or the webhook body — both only tell us *which* order
+ * to look at. The status always comes from PACO's own Inquiry API (server-to-server, signed and
+ * encrypted), so the attempt ends up completed, declined, cancelled, expired or voided exactly as
+ * PACO has it. That also works where PACO can't reach our webhook at all (local development).
  */
 class HblGateway implements PaymentGateway
 {
@@ -37,12 +38,25 @@ class HblGateway implements PaymentGateway
     private const REQUEST_CURRENCY_DECIMAL_PLACES = 2;
 
     /**
-     * Status values PACO/HBL is known (from the demo's own examples) or reasonably expected to use
-     * to mean "payment succeeded" — kept narrow and fails closed (no Payment recorded) for anything
-     * else, since guessing wrong in the permissive direction would record a payment that didn't
-     * actually happen. Revisit once a real UAT webhook payload is seen.
+     * PACO payment status codes (paymentStatusInfo.paymentStatus) → our Payment status. `R`
+     * (refund) isn't mapped: a refund is recorded as its own Payment row, the original stays
+     * completed.
+     *
+     * @see https://devzone.2c2p.com/docs/payment-status
+     *
+     * @var array<string, string>
      */
-    private const SUCCESS_STATUSES = ['00', '000', 'SUCCESS', 'SUCCESSFUL', 'S', 'COMPLETED', 'A'];
+    private const PACO_STATUSES = [
+        'PCPS' => 'pending',
+        'I' => 'pending',
+        'P' => 'pending',
+        'A' => 'completed',
+        'S' => 'completed',
+        'F' => 'declined',
+        'C' => 'cancelled',
+        'E' => 'expired',
+        'V' => 'voided',
+    ];
 
     public function __construct(private readonly JoseCodec $jose = new JoseCodec) {}
 
@@ -81,29 +95,19 @@ class HblGateway implements PaymentGateway
     {
         $credentials = $this->credentialsFor($invoice);
         $orderNo = $this->generateOrderNo();
-        $now = Carbon::now();
 
         $request = [
-            'apiRequest' => [
-                'requestMessageID' => $this->guid(),
-                'requestDateTime' => $now->utc()->format('Y-m-d\TH:i:s.v\Z'),
-                'language' => 'en-US',
-            ],
+            'apiRequest' => $this->apiRequestHeader(),
             'officeId' => $credentials['office_id'],
             'orderNo' => $orderNo,
-            'productDescription' => "Invoice {$invoice->invoice_no}",
+            'productDescription' => $this->productDescription($invoice),
             'paymentType' => 'CC',
             'paymentCategory' => 'ECOM',
             'storeCardDetails' => ['storeCardFlag' => 'N', 'storedCardUniqueID' => null],
             'installmentPaymentDetails' => ['ippFlag' => 'N', 'installmentPeriod' => 0, 'interestType' => null],
             'mcpFlag' => 'N',
             'request3dsFlag' => 'N',
-            'transactionAmount' => [
-                'amountText' => str_pad((string) $amount, 12, '0', STR_PAD_LEFT),
-                'currencyCode' => $invoice->currency,
-                'decimalPlaces' => self::REQUEST_CURRENCY_DECIMAL_PLACES,
-                'amount' => round($amount / 100, self::REQUEST_CURRENCY_DECIMAL_PLACES),
-            ],
+            'transactionAmount' => $this->amountPayload($amount, $invoice->currency),
             'notificationURLs' => [
                 'confirmationURL' => $this->decorateReturnUrl($returnUrl, $orderNo, 'success'),
                 'failedURL' => $this->decorateReturnUrl($returnUrl, $orderNo, 'failed'),
@@ -119,13 +123,8 @@ class HblGateway implements PaymentGateway
             'purchaseItems' => [[
                 'purchaseItemType' => 'invoice',
                 'referenceNo' => (string) $invoice->id,
-                'purchaseItemDescription' => "Invoice {$invoice->invoice_no}",
-                'purchaseItemPrice' => [
-                    'amountText' => str_pad((string) $amount, 12, '0', STR_PAD_LEFT),
-                    'currencyCode' => $invoice->currency,
-                    'decimalPlaces' => self::REQUEST_CURRENCY_DECIMAL_PLACES,
-                    'amount' => round($amount / 100, self::REQUEST_CURRENCY_DECIMAL_PLACES),
-                ],
+                'purchaseItemDescription' => $this->productDescription($invoice),
+                'purchaseItemPrice' => $this->amountPayload($amount, $invoice->currency),
             ]],
         ];
 
@@ -134,98 +133,121 @@ class HblGateway implements PaymentGateway
         $paymentPageUrl = $decoded['response']['Data']['paymentPage']['paymentPageURL'] ?? null;
 
         if (! $paymentPageUrl) {
-            throw new RuntimeException('HBL did not return a payment page URL.');
+            $reason = $decoded['response']['ApiResponse']['ResponseDescription'] ?? 'no payment page URL returned';
+
+            throw new RuntimeException("HBL could not start the payment ({$reason}).");
         }
+
+        $this->recordAttempt($invoice, $orderNo, $amount, $invoice->currency);
 
         return $paymentPageUrl;
     }
 
     public function handleReturn(Request $request, Invoice $invoice): PaymentReturnResult
     {
-        $status = $request->query('status');
-        $orderNo = $request->query('orderNo');
+        $orderNo = (string) $request->input('orderNo');
+        $browserStatus = $request->input('status');
+        $payment = null;
 
-        if ($status === 'failed') {
-            return new PaymentReturnResult('failed', message: 'The payment was declined.');
-        }
-
-        if ($status === 'cancelled') {
-            return new PaymentReturnResult('cancelled', message: 'The payment was cancelled.');
-        }
-
-        if ($status === 'success' && $orderNo) {
-            $payment = Payment::query()->withoutGlobalScopes()
-                ->where('tenant_id', $invoice->tenant_id)
-                ->where('transaction_ref', $orderNo)
-                ->first();
-
-            if ($payment) {
-                return new PaymentReturnResult('completed', $payment);
+        if ($orderNo !== '') {
+            try {
+                $payment = $this->syncOrder($invoice, $orderNo);
+            } catch (Throwable $e) {
+                Log::warning('HBL payment status check failed on return.', ['invoice_id' => $invoice->id, 'order_no' => $orderNo, 'message' => $e->getMessage()]);
+                $payment = $this->attemptFor($invoice, $orderNo);
             }
         }
 
-        return new PaymentReturnResult(
-            'pending',
-            message: "We've received your payment and are confirming it now — this page will not update automatically, but you'll see it reflected on the invoice shortly.",
-        );
+        // PACO still has the order open (or couldn't be asked): the browser's own failed/cancelled
+        // redirect is enough to close the attempt — nothing was charged. A "success" redirect is
+        // never trusted on its own; only PACO's Inquiry can mark an attempt completed.
+        if ($payment?->status === 'pending' && in_array($browserStatus, ['failed', 'cancelled'], true)) {
+            $this->updateAttempt($invoice, $payment, $browserStatus === 'failed' ? 'failed' : 'cancelled');
+        }
+
+        return match ($payment?->status ?? $browserStatus) {
+            'completed' => new PaymentReturnResult('completed', $payment),
+            'declined' => new PaymentReturnResult('failed', $payment, 'Your card payment was declined by the bank. No money was taken — please try again or use another card.'),
+            'failed' => new PaymentReturnResult('failed', $payment, 'The payment could not be completed. No money was taken — please try again.'),
+            'expired' => new PaymentReturnResult('failed', $payment, 'The payment session expired before it was completed. Please try again.'),
+            'voided' => new PaymentReturnResult('failed', $payment, 'This payment was voided. Please contact us if you were charged.'),
+            'cancelled' => new PaymentReturnResult('cancelled', $payment, 'The payment was cancelled.'),
+            default => new PaymentReturnResult(
+                'pending',
+                $payment,
+                "We've received your payment and are confirming it with the bank — it will show on the invoice as soon as it is confirmed.",
+            ),
+        };
     }
 
+    /**
+     * PACO's backend notification. Its body is only used to find out which order changed — the
+     * status itself is re-read from PACO's Inquiry API, so a forged or replayed notification can
+     * at most trigger a harmless re-check.
+     */
     public function handleWebhook(Request $request, Invoice $invoice): ?Payment
     {
-        $credentials = $this->credentialsFor($invoice);
+        $orderNo = $this->orderNoFromNotification($request, $invoice);
 
-        try {
-            $claims = $this->jose->decode(
-                $request->getContent(),
-                $credentials['merchant_decryption_private_key'] ?? '',
-                $credentials['paco_signing_public_key'] ?? '',
-                $credentials['api_key'] ?? '',
-            );
-        } catch (Throwable $e) {
-            throw new RuntimeException('HBL webhook could not be decrypted/verified: '.$e->getMessage());
+        if ($orderNo === null) {
+            throw new RuntimeException('HBL webhook did not identify an order.');
         }
 
-        $body = $claims['request'] ?? $claims['response']['Data'] ?? $claims;
+        return $this->syncOrder($invoice, $orderNo);
+    }
 
-        $orderNo = $body['orderNo'] ?? null;
-        $status = $body['paymentStatus'] ?? $body['status'] ?? $body['respCode'] ?? null;
-        $amountData = $body['transactionAmount'] ?? $body['amount'] ?? null;
+    /**
+     * Bring the Payment for this PACO order in line with what PACO's Inquiry API reports. Creates
+     * the record if it's missing (an attempt started before attempts were recorded), but only for
+     * an order PACO confirms was raised for this very invoice.
+     */
+    public function syncOrder(Invoice $invoice, string $orderNo): ?Payment
+    {
+        $payment = $this->attemptFor($invoice, $orderNo);
 
-        if (! $orderNo || ! $amountData) {
-            Log::warning('HBL webhook payload did not match any known shape — recording nothing.', ['invoice_id' => $invoice->id, 'claims' => $claims]);
-
-            return null;
+        if ($payment?->status === 'completed') {
+            return $payment;
         }
 
-        $isSuccessful = $status !== null && in_array((string) $status, self::SUCCESS_STATUSES, true);
+        $transaction = $this->inquire($invoice, $orderNo);
 
-        if (! $isSuccessful) {
-            Log::info('HBL webhook did not indicate a successful payment — no payment recorded.', [
-                'invoice_id' => $invoice->id,
-                'order_no' => $orderNo,
-                'status' => $status,
-            ]);
-
-            return null;
+        if ($transaction === null) {
+            return $payment;
         }
 
-        $amount = isset($amountData['amountText'])
-            ? (int) ltrim((string) $amountData['amountText'], '0') ?: 0
-            : (int) round(((float) ($amountData['amount'] ?? 0)) * 100);
-        $currency = $amountData['currencyCode'] ?? $invoice->currency;
+        $pacoStatus = (string) $this->field($transaction, 'PaymentStatusInfo', 'PaymentStatus');
+        $status = self::PACO_STATUSES[$pacoStatus] ?? null;
 
-        return app(TenantContext::class)->wrap($invoice->tenant, fn (): Payment => Payment::withoutGlobalScopes()->firstOrCreate(
-            ['tenant_id' => $invoice->tenant_id, 'transaction_ref' => $orderNo],
-            [
-                'invoice_id' => $invoice->id,
+        if ($status === null) {
+            Log::info('HBL order has a status we do not track — left unchanged.', ['invoice_id' => $invoice->id, 'order_no' => $orderNo, 'paco_status' => $pacoStatus]);
+
+            return $payment;
+        }
+
+        $amountText = $this->field($transaction, 'TransactionAmount', 'AmountText');
+        $amount = $amountText !== null ? (int) $amountText : null;
+        $currency = $this->field($transaction, 'TransactionAmount', 'CurrencyCode');
+
+        if ($payment === null) {
+            if ($this->field($transaction, 'ProductDescription') !== $this->productDescription($invoice) || $amount === null) {
+                Log::warning('HBL order does not belong to this invoice — ignored.', ['invoice_id' => $invoice->id, 'order_no' => $orderNo]);
+
+                return null;
+            }
+
+            $payment = $this->recordAttempt($invoice, $orderNo, $amount, (string) ($currency ?: $invoice->currency));
+        }
+
+        if ($payment->status !== $status) {
+            $this->updateAttempt($invoice, $payment, $status, $status === 'completed' ? array_filter([
                 'amount' => $amount,
                 'currency' => $currency,
-                'method' => 'hbl',
-                'type' => 'installment',
-                'status' => 'completed',
-                'paid_at' => now(),
-            ],
-        ));
+            ]) : []);
+
+            Log::info('HBL payment status updated.', ['invoice_id' => $invoice->id, 'order_no' => $orderNo, 'status' => $status, 'paco_status' => $pacoStatus]);
+        }
+
+        return $payment;
     }
 
     public function refund(Payment $payment, ?int $amount = null): Payment
@@ -266,6 +288,183 @@ class HblGateway implements PaymentGateway
             'transaction_ref' => (string) $refundReference,
             'paid_at' => now(),
         ]);
+    }
+
+    /**
+     * The order's current record at PACO, or null when PACO doesn't know it.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function inquire(Invoice $invoice, string $orderNo): ?array
+    {
+        $credentials = $this->credentialsFor($invoice);
+
+        $decoded = $this->call($credentials, 'api/1.0/Inquiry/transactionList', [
+            'apiRequest' => $this->apiRequestHeader(),
+            'advSearchParams' => [
+                'controllerInternalID' => null,
+                'officeId' => [$credentials['office_id'] ?? ''],
+                'orderNo' => [$orderNo],
+                'invoiceNo2C2P' => null,
+                'fromDate' => '0001-01-01T00:00:00',
+                'toDate' => '0001-01-01T00:00:00',
+                'amountFrom' => null,
+                'amountTo' => null,
+            ],
+        ]);
+
+        foreach ((array) $this->field($decoded, 'response', 'Data') as $transaction) {
+            if (is_array($transaction) && (string) $this->field($transaction, 'OrderNo') === $orderNo) {
+                return $transaction;
+            }
+        }
+
+        return null;
+    }
+
+    private function attemptFor(Invoice $invoice, string $orderNo): ?Payment
+    {
+        return Payment::query()->withoutGlobalScopes()
+            ->where('tenant_id', $invoice->tenant_id)
+            ->where('invoice_id', $invoice->id)
+            ->where('method', 'hbl')
+            ->where('transaction_ref', $orderNo)
+            ->first();
+    }
+
+    private function recordAttempt(Invoice $invoice, string $orderNo, int $amount, string $currency): Payment
+    {
+        return app(TenantContext::class)->wrap($invoice->tenant()->firstOrFail(), fn (): Payment => Payment::query()->withoutGlobalScopes()->firstOrCreate(
+            ['tenant_id' => $invoice->tenant_id, 'transaction_ref' => $orderNo],
+            [
+                'invoice_id' => $invoice->id,
+                'amount' => $amount,
+                'currency' => $currency,
+                'method' => 'hbl',
+                'type' => 'installment',
+                'status' => 'pending',
+            ],
+        ));
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function updateAttempt(Invoice $invoice, Payment $payment, string $status, array $attributes = []): void
+    {
+        app(TenantContext::class)->wrap($invoice->tenant()->firstOrFail(), fn (): bool => $payment->update([
+            ...$attributes,
+            'status' => $status,
+            'paid_at' => $status === 'completed' ? now() : $payment->paid_at,
+        ]));
+    }
+
+    /**
+     * The orderNo from a backend notification, whichever way PACO sent it: a JOSE token (verified
+     * against the agency's keys), plain JSON, or form fields.
+     */
+    private function orderNoFromNotification(Request $request, Invoice $invoice): ?string
+    {
+        $credentials = $this->credentialsFor($invoice);
+        $content = trim($request->getContent());
+        $payloads = [$request->all()];
+
+        if ($content !== '') {
+            try {
+                $payloads[] = $this->jose->decode(
+                    $content,
+                    $credentials['merchant_decryption_private_key'] ?? '',
+                    $credentials['paco_signing_public_key'] ?? '',
+                    $credentials['api_key'] ?? '',
+                );
+            } catch (Throwable) {
+                try {
+                    $payloads[] = (array) json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+                } catch (JsonException) {
+                    // Neither JOSE nor JSON: only form fields remain to look at.
+                }
+            }
+        }
+
+        foreach ($payloads as $payload) {
+            $orderNo = $this->findKey($payload, 'orderNo');
+
+            if (filled($orderNo) && is_scalar($orderNo)) {
+                return (string) $orderNo;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * A field read case-insensitively along a path — PACO answers in camelCase from the Payment API
+     * and PascalCase from the Inquiry API.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function field(array $data, string ...$path): mixed
+    {
+        $value = $data;
+
+        foreach ($path as $key) {
+            if (! is_array($value)) {
+                return null;
+            }
+
+            $match = array_values(array_filter(array_keys($value), fn ($candidate): bool => strcasecmp((string) $candidate, $key) === 0));
+            $value = $match === [] ? null : $value[$match[0]];
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<mixed>  $data
+     */
+    private function findKey(array $data, string $key): mixed
+    {
+        foreach ($data as $candidate => $value) {
+            if (is_string($candidate) && strcasecmp($candidate, $key) === 0) {
+                return $value;
+            }
+
+            if (is_array($value) && ($found = $this->findKey($value, $key)) !== null) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{amountText: string, currencyCode: string, decimalPlaces: int, amount: float}
+     */
+    private function amountPayload(int $amount, string $currency): array
+    {
+        return [
+            'amountText' => str_pad((string) $amount, 12, '0', STR_PAD_LEFT),
+            'currencyCode' => $currency,
+            'decimalPlaces' => self::REQUEST_CURRENCY_DECIMAL_PLACES,
+            'amount' => round($amount / 100, self::REQUEST_CURRENCY_DECIMAL_PLACES),
+        ];
+    }
+
+    private function productDescription(Invoice $invoice): string
+    {
+        return "Invoice {$invoice->invoice_no}";
+    }
+
+    /**
+     * @return array{requestMessageID: string, requestDateTime: string, language: string}
+     */
+    private function apiRequestHeader(): array
+    {
+        return [
+            'requestMessageID' => $this->guid(),
+            'requestDateTime' => Carbon::now()->utc()->format('Y-m-d\TH:i:s.v\Z'),
+            'language' => 'en-US',
+        ];
     }
 
     /**

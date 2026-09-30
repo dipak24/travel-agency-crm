@@ -1,14 +1,20 @@
 <?php
 
+use App\Filament\Tenant\Resources\InvoiceResource\Pages\EditInvoice;
+use App\Filament\Tenant\Resources\InvoiceResource\RelationManagers\PaymentsRelationManager as InvoicePaymentsRelationManager;
 use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Tenant;
 use App\Models\TenantPaymentGateway;
+use App\Models\TenantUser;
 use App\Services\PaymentGateways\Hbl\JoseCodec;
 use App\Services\PaymentGateways\HblGateway;
 use App\Support\TenantContext;
+use Database\Seeders\HblUatPaymentGatewaySeeder;
+use Filament\Actions\Testing\TestAction;
+use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -24,7 +30,9 @@ use Jose\Component\Signature\Algorithm\PS256;
 use Jose\Component\Signature\JWSLoader;
 use Jose\Component\Signature\JWSVerifier;
 use Jose\Component\Signature\Serializer\JWSSerializerManager;
+use Livewire\Livewire;
 use RuntimeException;
+use Spatie\Permission\Models\Role;
 
 uses(RefreshDatabase::class);
 
@@ -209,99 +217,164 @@ test('starting hbl checkout builds a correctly signed request and returns the pa
     $url = app(HblGateway::class)->startCheckout($invoice, $invoice->balanceDue(), 'https://app.test/pay/return');
 
     expect($url)->toBe('https://fake-hbl-checkout.test/session/abc123');
+
+    // Every attempt is on record from the start, so a declined or abandoned one still shows.
+    expect(Payment::query()->where('invoice_id', $invoice->id)->where('method', 'hbl')->sole()->status)->toBe('pending');
 });
 
-test('handleReturn reports pending for a successful browser return with no webhook yet, and failed/cancelled otherwise', function () {
+/**
+ * Makes every outgoing HBL call answer like PACO's Inquiry API does for one order.
+ */
+function hblFakeInquiry(array $setup, Invoice $invoice, string $orderNo, ?string $pacoStatus, string $amountText = '000000050000', ?string $description = null): void
+{
+    $data = $pacoStatus === null ? [] : [[
+        'OrderNo' => $orderNo,
+        'ProductDescription' => $description ?? "Invoice {$invoice->invoice_no}",
+        'PaymentStatusInfo' => ['PaymentStatus' => $pacoStatus],
+        'TransactionAmount' => ['AmountText' => $amountText, 'CurrencyCode' => 'USD', 'DecimalPlaces' => 2, 'Amount' => ((int) $amountText) / 100],
+    ]];
+
+    Http::fake(fn () => Http::response(hblFakePacoResponse(
+        ['response' => ['Data' => $data]],
+        $setup['paco'],
+        $setup['paco']['merchant_decryption_public'],
+        $setup['credentials']['api_key'],
+    ), 200));
+}
+
+function hblPendingAttempt(Invoice $invoice, string $orderNo, int $amount = 50000): Payment
+{
+    return $invoice->payments()->create([
+        'amount' => $amount, 'currency' => 'USD', 'method' => 'hbl', 'type' => 'installment',
+        'status' => 'pending', 'transaction_ref' => $orderNo,
+    ]);
+}
+
+test('handleReturn falls back to the browser outcome when HBL has no record of the order', function () {
     $tenant = Tenant::query()->create(['name' => 'Northwind Travel', 'slug' => 'northwind-travel']);
     app(TenantContext::class)->set($tenant);
-    hblSetup($tenant);
-    $customer = Customer::factory()->create();
-    $invoice = hblInvoiceFor($customer);
+    $setup = hblSetup($tenant);
+    $invoice = hblInvoiceFor(Customer::factory()->create());
+    hblFakeInquiry($setup, $invoice, 'UNKNOWN', null);
 
     $gateway = app(HblGateway::class);
 
-    $pending = $gateway->handleReturn(Request::create('/return?status=success&orderNo=NOTFOUNDYET'), $invoice);
-    expect($pending->status)->toBe('pending')->and($pending->payment)->toBeNull();
-
-    $failed = $gateway->handleReturn(Request::create('/return?status=failed&orderNo=X'), $invoice);
-    expect($failed->status)->toBe('failed');
-
-    $cancelled = $gateway->handleReturn(Request::create('/return?status=cancelled&orderNo=X'), $invoice);
-    expect($cancelled->status)->toBe('cancelled');
+    expect($gateway->handleReturn(Request::create('/return?status=success&orderNo=UNKNOWN'), $invoice)->status)->toBe('pending')
+        ->and($gateway->handleReturn(Request::create('/return?status=failed&orderNo=UNKNOWN'), $invoice)->status)->toBe('failed')
+        ->and($gateway->handleReturn(Request::create('/return?status=cancelled&orderNo=UNKNOWN'), $invoice)->status)->toBe('cancelled')
+        ->and(Payment::query()->where('transaction_ref', 'UNKNOWN')->exists())->toBeFalse();
 });
 
-test('handleReturn reports completed once the webhook has already recorded the payment', function () {
+test('handleReturn reports an already confirmed payment as completed without asking HBL again', function () {
     $tenant = Tenant::query()->create(['name' => 'Northwind Travel', 'slug' => 'northwind-travel']);
     app(TenantContext::class)->set($tenant);
     hblSetup($tenant);
-    $customer = Customer::factory()->create();
-    $invoice = hblInvoiceFor($customer);
+    $invoice = hblInvoiceFor(Customer::factory()->create());
     $invoice->payments()->create([
         'amount' => 50000, 'currency' => 'USD', 'method' => 'hbl', 'type' => 'installment',
         'status' => 'completed', 'transaction_ref' => 'ORDER777', 'paid_at' => now(),
     ]);
+    Http::fake();
 
     $result = app(HblGateway::class)->handleReturn(Request::create('/return?status=success&orderNo=ORDER777'), $invoice);
 
     expect($result->status)->toBe('completed')
         ->and($result->payment?->transaction_ref)->toBe('ORDER777');
+    Http::assertNothingSent();
 });
 
-test('a webhook that decrypts and verifies with a recognised success status records a completed payment', function () {
+test('returning from HBL confirms an approved payment with HBL and records it against the invoice', function () {
     $tenant = Tenant::query()->create(['name' => 'Northwind Travel', 'slug' => 'northwind-travel']);
     app(TenantContext::class)->set($tenant);
     $setup = hblSetup($tenant);
-    $customer = Customer::factory()->create();
-    $invoice = hblInvoiceFor($customer, ['total' => 50000]);
-    app(TenantContext::class)->clear();
+    $invoice = hblInvoiceFor(Customer::factory()->create(), ['total' => 50000]);
+    $attempt = hblPendingAttempt($invoice, 'ORDER100');
+    hblFakeInquiry($setup, $invoice, 'ORDER100', 'A');
 
-    $token = hblFakePacoResponse([
-        'response' => [
-            'Data' => [
-                'orderNo' => 'ORDER999',
-                'paymentStatus' => 'SUCCESS',
-                'transactionAmount' => ['amountText' => '000000050000', 'currencyCode' => 'USD', 'amount' => 500],
-            ],
-        ],
-    ], $setup['paco'], $setup['paco']['merchant_decryption_public'], $setup['credentials']['api_key']);
+    $result = app(HblGateway::class)->handleReturn(Request::create('/return?status=success&orderNo=ORDER100'), $invoice);
 
-    $request = Request::create('/webhooks/hbl/'.$invoice->id, 'POST', content: $token);
-
-    $payment = app(HblGateway::class)->handleWebhook($request, $invoice);
-
-    expect($payment)->not->toBeNull()
-        ->and($payment->amount)->toBe(50000)
-        ->and($payment->method)->toBe('hbl')
-        ->and($payment->status)->toBe('completed')
+    expect($result->status)->toBe('completed')
+        ->and($attempt->refresh()->status)->toBe('completed')
+        ->and($attempt->paid_at)->not->toBeNull()
         ->and($invoice->refresh()->status)->toBe('paid');
-
-    // A retried webhook with the same orderNo must not double-credit the invoice.
-    $again = app(HblGateway::class)->handleWebhook(Request::create('/webhooks/hbl/'.$invoice->id, 'POST', content: $token), $invoice);
-    expect(Payment::query()->withoutGlobalScopes()->where('transaction_ref', 'ORDER999')->count())->toBe(1);
 });
 
-test('a webhook with an unrecognised status records nothing', function () {
+test('an order HBL reports as unsuccessful is recorded with its outcome and takes no money', function (string $pacoStatus, string $recorded, string $returned, string $message) {
     $tenant = Tenant::query()->create(['name' => 'Northwind Travel', 'slug' => 'northwind-travel']);
     app(TenantContext::class)->set($tenant);
     $setup = hblSetup($tenant);
-    $customer = Customer::factory()->create();
-    $invoice = hblInvoiceFor($customer);
+    $invoice = hblInvoiceFor(Customer::factory()->create(), ['total' => 50000]);
+    $attempt = hblPendingAttempt($invoice, 'ORDER200');
+    hblFakeInquiry($setup, $invoice, 'ORDER200', $pacoStatus);
+
+    $result = app(HblGateway::class)->handleReturn(Request::create('/return?status=success&orderNo=ORDER200'), $invoice);
+
+    expect($result->status)->toBe($returned)
+        ->and($result->message)->toContain($message)
+        ->and($attempt->refresh()->status)->toBe($recorded)
+        ->and($invoice->refresh()->balanceDue())->toBe(50000)
+        ->and($invoice->status)->toBe('issued');
+})->with([
+    'declined by the bank' => ['F', 'declined', 'failed', 'declined'],
+    'cancelled by the customer' => ['C', 'cancelled', 'cancelled', 'cancelled'],
+    'session expired' => ['E', 'expired', 'failed', 'expired'],
+]);
+
+test('a failed redirect closes an attempt HBL still shows as open, but a success redirect alone never marks it paid', function () {
+    $tenant = Tenant::query()->create(['name' => 'Northwind Travel', 'slug' => 'northwind-travel']);
+    app(TenantContext::class)->set($tenant);
+    $setup = hblSetup($tenant);
+    $invoice = hblInvoiceFor(Customer::factory()->create(), ['total' => 50000]);
+    $failedAttempt = hblPendingAttempt($invoice, 'ORDER300');
+    $openAttempt = hblPendingAttempt($invoice, 'ORDER301');
+    $gateway = app(HblGateway::class);
+
+    hblFakeInquiry($setup, $invoice, 'ORDER300', 'PCPS');
+    expect($gateway->handleReturn(Request::create('/return?status=failed&orderNo=ORDER300'), $invoice)->status)->toBe('failed')
+        ->and($failedAttempt->refresh()->status)->toBe('failed');
+
+    hblFakeInquiry($setup, $invoice, 'ORDER301', 'PCPS');
+    expect($gateway->handleReturn(Request::create('/return?status=success&orderNo=ORDER301'), $invoice)->status)->toBe('pending')
+        ->and($openAttempt->refresh()->status)->toBe('pending')
+        ->and($invoice->refresh()->balanceDue())->toBe(50000);
+});
+
+test('an HBL notification re-checks the order with HBL and records the payment only once', function () {
+    $tenant = Tenant::query()->create(['name' => 'Northwind Travel', 'slug' => 'northwind-travel']);
+    app(TenantContext::class)->set($tenant);
+    $setup = hblSetup($tenant);
+    $invoice = hblInvoiceFor(Customer::factory()->create(), ['total' => 50000]);
     app(TenantContext::class)->clear();
+    hblFakeInquiry($setup, $invoice, 'ORDER999', 'A');
 
-    $token = hblFakePacoResponse([
-        'response' => [
-            'Data' => [
-                'orderNo' => 'ORDERFAIL',
-                'paymentStatus' => 'DECLINED',
-                'transactionAmount' => ['amountText' => '000000050000', 'currencyCode' => 'USD', 'amount' => 500],
-            ],
-        ],
-    ], $setup['paco'], $setup['paco']['merchant_decryption_public'], $setup['credentials']['api_key']);
+    // The notification body only names the order; its outcome comes from the Inquiry above.
+    $notification = hblFakePacoResponse(
+        ['data' => ['paymentResult' => ['orderNo' => 'ORDER999']]],
+        $setup['paco'],
+        $setup['paco']['merchant_decryption_public'],
+        $setup['credentials']['api_key'],
+    );
 
-    $payment = app(HblGateway::class)->handleWebhook(Request::create('/webhooks/hbl/'.$invoice->id, 'POST', content: $token), $invoice);
+    $payment = app(HblGateway::class)->handleWebhook(Request::create('/webhooks/hbl/'.$invoice->id, 'POST', content: $notification), $invoice);
+    app(HblGateway::class)->handleWebhook(Request::create('/webhooks/hbl/'.$invoice->id, 'POST', content: $notification), $invoice);
+
+    expect($payment?->status)->toBe('completed')
+        ->and($payment->amount)->toBe(50000)
+        ->and(Payment::query()->withoutGlobalScopes()->where('transaction_ref', 'ORDER999')->count())->toBe(1)
+        ->and($invoice->refresh()->status)->toBe('paid');
+});
+
+test('an HBL notification for an order raised for another invoice records nothing', function () {
+    $tenant = Tenant::query()->create(['name' => 'Northwind Travel', 'slug' => 'northwind-travel']);
+    app(TenantContext::class)->set($tenant);
+    $setup = hblSetup($tenant);
+    $invoice = hblInvoiceFor(Customer::factory()->create());
+    hblFakeInquiry($setup, $invoice, 'ORDERX', 'A', description: 'Invoice SOMEONE-ELSES');
+
+    $payment = app(HblGateway::class)->handleWebhook(Request::create('/webhooks/hbl/'.$invoice->id, 'POST', ['orderNo' => 'ORDERX']), $invoice);
 
     expect($payment)->toBeNull()
-        ->and(Payment::query()->withoutGlobalScopes()->where('transaction_ref', 'ORDERFAIL')->exists())->toBeFalse();
+        ->and(Payment::query()->withoutGlobalScopes()->where('transaction_ref', 'ORDERX')->exists())->toBeFalse();
 });
 
 test('a webhook that fails to decrypt/verify is rejected', function () {
@@ -341,4 +414,73 @@ test('refunding an hbl payment calls the gateway and records a refund entry', fu
         ->and($refund->method)->toBe('hbl')
         ->and($refund->transaction_ref)->toBe('REFUND-ORDERREFUND')
         ->and($invoice->refresh()->balanceDue())->toBe(50000);
+});
+
+test('JoseCodec accepts a PACO response stamped a few seconds ahead of our clock', function () {
+    $merchant = hblGenerateRsaKeyPair();
+    $paco = hblGenerateRsaKeyPair();
+    $ahead = now()->addSeconds(5);
+
+    $codec = new JoseCodec;
+    $token = $codec->encode([
+        'response' => ['ok' => true],
+        'iss' => 'PacoIssuer',
+        'aud' => 'my-audience',
+        'iat' => $ahead->unix(),
+        'nbf' => $ahead->unix(),
+        'exp' => $ahead->copy()->addHour()->unix(),
+    ], $paco['private'], $merchant['public'], 'kid-1');
+
+    expect($codec->decode($token, $merchant['private'], $paco['public'], 'my-audience')['response']['ok'])->toBeTrue();
+});
+
+test('a gateway POSTing the customer back is redirected to the GET return route with its fields', function () {
+    $this->post('/pay/hbl/12/return?status=failed', ['orderNo' => 'ORDER5'])
+        ->assertStatus(303)
+        ->assertRedirect(url('/pay/hbl/12/return').'?status=failed&orderNo=ORDER5');
+});
+
+test('staff can check a pending HBL payment with HBL from the invoice', function () {
+    $tenant = Tenant::query()->create(['name' => 'Northwind Travel', 'slug' => 'northwind-travel']);
+    $this->seed();
+    app(TenantContext::class)->set($tenant);
+    $owner = TenantUser::factory()->create();
+    $owner->assignRole(Role::query()->where('name', 'Tenant Owner')->where('guard_name', 'tenant')->where('team_id', $tenant->id)->firstOrFail());
+    $setup = hblSetup($tenant);
+    $invoice = hblInvoiceFor(Customer::factory()->create(), ['total' => 50000]);
+    $attempt = hblPendingAttempt($invoice, 'ORDER400');
+    hblFakeInquiry($setup, $invoice, 'ORDER400', 'F');
+
+    Filament::setCurrentPanel('tenant');
+
+    Livewire::actingAs($owner, 'tenant')->test(InvoicePaymentsRelationManager::class, [
+        'ownerRecord' => $invoice,
+        'pageClass' => EditInvoice::class,
+    ])
+        ->callAction(TestAction::make('checkHblStatus')->table($attempt))
+        ->assertNotified('HBL status: Declined');
+
+    expect($attempt->refresh()->status)->toBe('declined');
+});
+
+test('the HBL UAT seeder puts the configured test credentials on the demo agency', function () {
+    $tenant = Tenant::query()->create(['name' => 'Demo Travel Agency', 'slug' => 'demo-travel']);
+    config(['services.hbl_uat' => ['office_id' => '9104137120'] + array_fill_keys(HblGateway::requiredCredentialKeys(), 'value')]);
+
+    (new HblUatPaymentGatewaySeeder)->run();
+
+    $gateway = TenantPaymentGateway::query()->withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('gateway', 'hbl')->firstOrFail();
+
+    expect($gateway->enabled)->toBeTrue()
+        ->and($gateway->credentials['mode'])->toBe('uat')
+        ->and($gateway->credentials['office_id'])->toBe('9104137120');
+});
+
+test('the HBL UAT seeder does nothing until every credential is configured', function () {
+    Tenant::query()->create(['name' => 'Demo Travel Agency', 'slug' => 'demo-travel']);
+    config(['services.hbl_uat' => ['api_key' => null] + array_fill_keys(HblGateway::requiredCredentialKeys(), 'value')]);
+
+    (new HblUatPaymentGatewaySeeder)->run();
+
+    expect(TenantPaymentGateway::query()->withoutGlobalScopes()->where('gateway', 'hbl')->exists())->toBeFalse();
 });

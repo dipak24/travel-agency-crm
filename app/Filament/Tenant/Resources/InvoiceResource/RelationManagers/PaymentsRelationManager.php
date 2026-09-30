@@ -4,6 +4,7 @@ namespace App\Filament\Tenant\Resources\InvoiceResource\RelationManagers;
 
 use App\Filament\Forms\Components\MoneyInput;
 use App\Models\Payment;
+use App\Services\PaymentGateways\HblGateway;
 use App\Services\PaymentGateways\PaymentGatewayResolver;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
@@ -18,6 +19,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use RuntimeException;
+use Throwable;
 
 class PaymentsRelationManager extends RelationManager
 {
@@ -46,12 +48,7 @@ class PaymentsRelationManager extends RelationManager
                 'final' => 'Final',
                 'refund' => 'Refund',
             ])->required()->default('installment'),
-            Select::make('status')->options([
-                'pending' => 'Pending',
-                'completed' => 'Completed',
-                'failed' => 'Failed',
-                'refunded' => 'Refunded',
-            ])->required()->default('completed'),
+            Select::make('status')->options(Payment::statusOptions())->required()->default('completed'),
             TextInput::make('transaction_ref')->label('Transaction reference')->maxLength(255),
             DateTimePicker::make('paid_at')->default(now()),
         ])->columns(1);
@@ -66,12 +63,8 @@ class PaymentsRelationManager extends RelationManager
                 TextColumn::make('type')->badge(),
                 TextColumn::make('method')->badge()->color('gray'),
                 TextColumn::make('status')->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'completed' => 'success',
-                        'failed' => 'danger',
-                        'refunded' => 'warning',
-                        default => 'info',
-                    }),
+                    ->formatStateUsing(fn (string $state): string => Payment::statusOptions()[$state] ?? $state)
+                    ->color(fn (string $state): string => Payment::statusColor($state)),
                 TextColumn::make('transaction_ref')->label('Reference')->placeholder('—'),
                 TextColumn::make('paid_at')->dateTime('M j, Y H:i')->sortable(),
             ])
@@ -97,6 +90,24 @@ class PaymentsRelationManager extends RelationManager
                         }
 
                         Notification::make()->title('Refund recorded')->success()->send();
+                    }),
+                Action::make('checkHblStatus')
+                    ->label('Check status with HBL')
+                    ->icon('heroicon-o-arrow-path')
+                    ->visible(fn (Payment $record): bool => $record->method === 'hbl' && $record->status === 'pending' && filled($record->transaction_ref))
+                    ->action(function (Payment $record): void {
+                        try {
+                            $payment = app(HblGateway::class)->syncOrder($this->getOwnerRecord(), $record->transaction_ref);
+                        } catch (Throwable $e) {
+                            Notification::make()->title('Could not reach HBL')->body($e->getMessage())->danger()->send();
+
+                            return;
+                        }
+
+                        Notification::make()
+                            ->title('HBL status: '.(Payment::statusOptions()[$payment?->status] ?? 'unknown'))
+                            ->success()
+                            ->send();
                     }),
                 EditAction::make(),
                 DeleteAction::make(),

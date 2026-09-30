@@ -4,8 +4,8 @@ namespace App\Notifications;
 
 use App\Models\Invoice;
 use App\Notifications\Concerns\RendersEmailTemplate;
+use App\Services\InvoicePdf;
 use App\Support\TransactionalEmailTypes;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -26,14 +26,12 @@ class InvoiceEmailed extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $this->invoice->loadMissing(['tenant', 'customer', 'booking']);
-
         return $this->transactionalMail($this->invoice->tenant_id, TransactionalEmailTypes::INVOICE_EMAILED, [
             'customer_name' => $notifiable->name,
             'invoice_no' => $this->invoice->invoice_no,
             'invoice_total' => $this->formatMoney($this->invoice->total, $this->invoice->currency),
         ])->attachData(
-            Pdf::loadView('pdf.invoice', ['invoice' => $this->invoice])->output(),
+            app(InvoicePdf::class)->forInvoice($this->invoice)->output(),
             "{$this->invoice->invoice_no}.pdf",
             ['mime' => 'application/pdf'],
         );

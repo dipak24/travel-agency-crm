@@ -14,7 +14,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // `unsubscribe` also takes RFC 8058 one-click POSTs from mail providers, authorized by its URL signature.
-        $middleware->validateCsrfTokens(except: ['webhooks/*', 'unsubscribe']);
+        // Gateway return URLs may be POSTed to cross-site; PostedReturnController only redirects them to their GET route.
+        $middleware->validateCsrfTokens(except: ['webhooks/*', 'unsubscribe', 'pay/*/*/return', 'portal/pay/*/*/return']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

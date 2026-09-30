@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Http\Controllers\InvoicePdfController;
 use App\Http\Middleware\EnsurePlatformDomain;
 use App\Http\Middleware\ResolvePlatformTeam;
 use Filament\Http\Middleware\Authenticate;
@@ -18,6 +19,7 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Route;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
@@ -55,6 +57,7 @@ class AdminPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
             ])
+            ->authenticatedRoutes(fn () => Route::get('tenant-invoices/{invoice}/pdf', [InvoicePdfController::class, 'admin'])->whereNumber('invoice')->name('tenant-invoices.pdf'))
             ->authMiddleware([
                 Authenticate::class,
                 ResolvePlatformTeam::class,

@@ -5,6 +5,7 @@ namespace App\Providers\Filament;
 use App\Filament\AgencyBranding;
 use App\Filament\Portal\Pages\Auth\ResetPassword;
 use App\Filament\Portal\Pages\Profile;
+use App\Http\Controllers\InvoicePdfController;
 use App\Http\Middleware\EnsurePlatformAvailable;
 use App\Http\Middleware\ResolveAgencySubdomain;
 use App\Http\Middleware\ResolveTenant;
@@ -22,6 +23,7 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Route;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 /**
@@ -65,6 +67,7 @@ class PortalPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
             ])
+            ->authenticatedRoutes(fn () => Route::get('invoices/{invoice}/pdf', [InvoicePdfController::class, 'portal'])->whereNumber('invoice')->name('invoices.pdf'))
             ->authMiddleware([
                 Authenticate::class,
                 ResolveTenant::class,

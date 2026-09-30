@@ -74,7 +74,7 @@ class DatabaseSeeder extends Seeder
 
         // Bookings, invoices, leads, etc. are for clicking around locally; tests build their own.
         if (! app()->runningUnitTests()) {
-            $this->call(DemoOperationsSeeder::class);
+            $this->call([DemoOperationsSeeder::class, HblUatPaymentGatewaySeeder::class]);
         }
 
         // Super admins use the fixed sentinel team id (0) — see ResolvePlatformTeam.

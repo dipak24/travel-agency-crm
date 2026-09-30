@@ -174,3 +174,18 @@ test('tenant invoices are only visible from the admin panel via withoutGlobalSco
     expect(TenantInvoice::query()->count())->toBe(0)
         ->and(TenantInvoice::query()->withoutGlobalScopes()->count())->toBe(2);
 });
+
+test('a platform admin opens a tenant invoice PDF inline, billed to the agency', function () {
+    $this->seed();
+    $admin = SuperAdmin::query()->where('email', 'admin@example.com')->firstOrFail();
+
+    $tenant = Tenant::factory()->create(['name' => 'Northwind Travel']);
+    app(TenantContext::class)->set($tenant);
+    $invoice = TenantInvoice::query()->create(['status' => 'issued', 'currency' => 'USD', 'total' => 5000]);
+    app(TenantContext::class)->clear();
+
+    $response = $this->actingAs($admin, 'super_admin')->get("/admin/tenant-invoices/{$invoice->id}/pdf");
+
+    $response->assertOk()->assertHeader('Content-Type', 'application/pdf');
+    expect($response->headers->get('Content-Disposition'))->toStartWith('inline');
+});

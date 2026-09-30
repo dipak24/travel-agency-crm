@@ -3,6 +3,7 @@
 use App\Http\Controllers\CustomerEmailChangeController;
 use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\Payments\CheckoutController;
+use App\Http\Controllers\Payments\PostedReturnController;
 use App\Http\Controllers\Payments\PublicPaymentController;
 use App\Http\Controllers\Payments\WebhookController;
 use App\Http\Controllers\PublicSite\DepartureController;
@@ -31,6 +32,11 @@ Route::middleware(EnsurePlatformAvailable::class)->prefix('pay')->name('public.p
     Route::get('/{invoice}', [PublicPaymentController::class, 'show'])->name('show')->middleware('signed');
     Route::get('/{gateway}/{invoice}/start', [PublicPaymentController::class, 'start'])->name('start')->middleware(['signed', 'throttle:20,1']);
     Route::get('/{gateway}/{invoice}/return', [PublicPaymentController::class, 'return'])->name('return');
+});
+
+Route::middleware([EnsurePlatformAvailable::class, 'throttle:30,1'])->group(function (): void {
+    Route::post('/portal/pay/{gateway}/{invoice}/return', PostedReturnController::class)->name('payments.return.posted');
+    Route::post('/pay/{gateway}/{invoice}/return', PostedReturnController::class)->name('public.pay.return.posted');
 });
 
 Route::post('/webhooks/{gateway}/{invoice}', [WebhookController::class, 'handle'])->name('payments.webhook');

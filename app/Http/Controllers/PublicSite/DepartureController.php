@@ -62,7 +62,7 @@ class DepartureController extends Controller
 
         $invoice = app(PublicBooking::class)->book($departureModel->package, $departureModel, $data);
 
-        return redirect()->away(app(InvoicePaymentLinks::class)->url($invoice));
+        return redirect()->away(app(InvoicePaymentLinks::class)->url($invoice, offerPayLater: true));
     }
 
     private function findDeparture(int $departureId): FixedDeparture
