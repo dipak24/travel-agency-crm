@@ -70,8 +70,6 @@ services:
 
   pgsql:
     image: postgres:16-alpine
-    ports:
-      - "${DB_FORWARD_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: ${DB_DATABASE:-travel_agency_crm}
       POSTGRES_USER: ${DB_USERNAME:-travel_saas}
