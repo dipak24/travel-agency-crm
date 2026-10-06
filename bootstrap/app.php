@@ -13,6 +13,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Trust the reverse proxy / load balancer so Laravel detects HTTPS from X-Forwarded-Proto.
+        $middleware->trustProxies(at: '*');
+        
         // `unsubscribe` also takes RFC 8058 one-click POSTs from mail providers, authorized by its URL signature.
         // Gateway return URLs may be POSTed to cross-site; PostedReturnController only redirects them to their GET route.
         $middleware->validateCsrfTokens(except: ['webhooks/*', 'unsubscribe', 'pay/*/*/return', 'portal/pay/*/*/return']);
